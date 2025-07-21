@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualiseur 3D Moderne</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="interface" class="bg-gray-800 bg-opacity-90 p-6 rounded-lg shadow-xl max-w-sm">
+        <div class="tooltip">
+            <input type="file" id="modelInput" accept=".gltf,.glb,.obj,.stl" class="mb-4 block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700">
+            <span class="tooltip-text">Formats pris en charge : .gltf, .glb, .obj, .stl</span>
+        </div>
+        <div class="flex space-x-2">
+            <button id="toggleMode" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200" aria-label="Basculer entre mode normal et mode voxel">Passer en mode voxel</button>
+            <button id="rotateX" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition duration-200" aria-label="Rotation X">↻ X</button>
+            <button id="rotateY" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition duration-200" aria-label="Rotation Y">↻ Y</button>
+            <button id="rotateZ" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition duration-200" aria-label="Rotation Z">↻ Z</button>
+        </div>
+        <div class="flex space-x-2 mt-2">
+            <button id="scaleUp" class="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition duration-200" aria-label="Agrandir le modèle">+</button>
+            <button id="scaleDown" class="flex-1 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition duration-200" aria-label="Réduire le modèle">-</button>
+        </div>
+        <button id="resetScene" class="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition duration-200 mt-2" aria-label="Réinitialiser la scène">Réinitialiser</button>
+        <div id="voxelSlider" class="mt-4 hidden">
+            <label for="voxelRes" class="text-gray-300 text-sm">Résolution Voxel (10-512):</label>
+            <input type="range" id="voxelRes" min="10" max="512" value="20" class="w-full mt-2" aria-label="Résolution des voxels">
+            <span id="voxelResValue" class="text-gray-300 text-sm">20</span>
+            <label for="voxelColor" class="text-gray-300 text-sm mt-2">Couleur des voxels:</label>
+            <input type="color" id="voxelColor" value="#aaaaaa" class="w-full mt-2">
+        </div>
+        <div id="loading" class="mt-4 text-gray-300 text-sm">Chargement du modèle...</div>
+        <div id="progress" class="mt-4 text-gray-300 text-sm">Voxelisation en cours... <span id="progressPercent">0%</span></div>
+        <div id="error" class="mt-4 text-red-500 text-sm hidden"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
