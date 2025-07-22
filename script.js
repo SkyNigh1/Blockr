@@ -11,8 +11,9 @@ class Visualizer3D {
         this.voxelColor = 0xaaaaaa;
         this.currentWorker = null;
         this.debounceTimeout = null;
-        this.modelScale = 1.0; // Track current scale multiplier
-        this.baseScale = 1.0; // Store base scale for reset
+        this.modelScale = 1.0;
+        this.baseScale = 1.0;
+        this.voxelData = null;
         this.loaders = {
             gltf: new THREE.GLTFLoader(),
             obj: new THREE.OBJLoader(),
@@ -31,14 +32,17 @@ class Visualizer3D {
             voxelRes: document.getElementById('voxelRes'),
             voxelResValue: document.getElementById('voxelResValue'),
             voxelColor: document.getElementById('voxelColor'),
+            exportSchem: document.getElementById('exportSchem'),
             loading: document.getElementById('loading'),
             progress: document.getElementById('progress'),
             progressPercent: document.getElementById('progressPercent'),
+            progressFill: document.querySelector('#progress .progress-fill'),
             error: document.getElementById('error')
         };
     }
 
     init() {
+        console.log('Initializing Visualizer3D...');
         this.setupRenderer();
         this.setupCamera();
         this.setupLighting();
@@ -46,6 +50,15 @@ class Visualizer3D {
         this.setupAxes();
         this.setupEventListeners();
         this.animate();
+        const interfaceElement = document.getElementById('interface');
+        if (interfaceElement) {
+            interfaceElement.style.display = 'block';
+            interfaceElement.style.visibility = 'visible';
+            interfaceElement.style.opacity = '1';
+            console.log('Interface visibility confirmed.');
+        } else {
+            console.error('Interface element (#interface) not found in DOM.');
+        }
     }
 
     setupRenderer() {
@@ -54,42 +67,59 @@ class Visualizer3D {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(this.renderer.domElement);
+        this.renderer.domElement.style.zIndex = '1';
+        console.log('Renderer initialized, canvas z-index set to 1.');
     }
 
     setupCamera() {
         this.camera.position.set(0, 0, 5);
+        this.camera.lookAt(0, 0, 0);
+        console.log('Camera initialized:', { position: this.camera.position, aspect: this.camera.aspect });
     }
 
     setupLighting() {
         const lights = [
-            { position: [10, 10, 10], intensity: 0.8 },
-            { position: [-10, 10, -10], intensity: 0.5 },
-            { position: [0, 10, -10], intensity: 0.3 }
+            { position: [10, 10, 10], intensity: 0.5 },
+            { position: [-10, 10, -10], intensity: 0.3 },
+            { position: [-10, 10, 10], intensity: 0.5 },
+            { position: [10, 10, -10], intensity: 0.3 }
         ];
         lights.forEach(({ position, intensity }) => {
             const light = new THREE.DirectionalLight(0xffffff, intensity);
             light.position.set(...position);
             light.castShadow = true;
-            light.shadow.mapSize.set(32, 32);
+            light.shadow.mapSize.set(4, 4);
             light.shadow.camera.near = 0.5;
             light.shadow.camera.far = 50;
             this.scene.add(light);
         });
         this.scene.add(new THREE.AmbientLight(0x404040));
+        console.log('Lighting initialized.');
     }
 
     setupControls() {
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.1;
+        console.log('OrbitControls initialized.');
     }
 
     setupAxes() {
         this.axesHelper = new THREE.AxesHelper(5);
+        this.axesHelper.visible = true;
         this.scene.add(this.axesHelper);
+        console.log('AxesHelper added to scene:', { visible: this.axesHelper.visible, scale: this.axesHelper.scale });
     }
 
     setupEventListeners() {
-        this.elements.modelInput.addEventListener('change', (e) => this.loadModel(e));
+        if (!this.elements.modelInput || !this.elements.toggleMode || !this.elements.exportSchem) {
+            console.error('Required DOM elements missing:', this.elements);
+            this.showError('Interface elements missing. Please check HTML structure.');
+            return;
+        }
+        this.elements.modelInput.addEventListener('change', (e) => {
+            console.log('Model input change event triggered:', e.target.files);
+            this.loadModel(e);
+        });
         this.elements.toggleMode.addEventListener('click', () => this.toggleViewMode());
         this.elements.resetScene.addEventListener('click', () => this.resetScene());
         this.elements.rotateX.addEventListener('click', () => this.rotateModel('x'));
@@ -99,15 +129,22 @@ class Visualizer3D {
         this.elements.scaleDown.addEventListener('click', () => this.scaleModel(0.9));
         this.elements.voxelRes.addEventListener('input', (e) => this.updateVoxelResolution(e));
         this.elements.voxelColor.addEventListener('input', (e) => this.updateVoxelColor(e));
+        this.elements.exportSchem.addEventListener('click', () => this.exportToSchem());
         window.addEventListener('resize', () => this.handleResize());
+        console.log('Event listeners set up successfully.');
     }
 
     loadModel(event) {
         const file = event.target.files[0];
-        if (!file) return;
+        if (!file) {
+            console.warn('No file selected.');
+            this.showError('Aucun fichier sélectionné.');
+            return;
+        }
 
         this.showLoading(true);
         this.clearError();
+        console.log('Loading model:', file.name);
 
         const fileName = file.name.toLowerCase();
         const reader = new FileReader();
@@ -139,7 +176,7 @@ class Visualizer3D {
                     console.log('STL loaded successfully:', mesh);
                     this.processModel(mesh);
                 } else {
-                    this.showError('Format de fichier non supporté. Utilisez .gltf, .glb, .obj ou .stl.');
+                    throw new Error('Format de fichier non supporté. Utilisez .gltf, .glb, .obj ou .stl.');
                 }
             } catch (err) {
                 console.error('Erreur lors du chargement du modèle :', err);
@@ -185,60 +222,55 @@ class Visualizer3D {
             }
         });
 
-        // Compute bounding box and size
         const box = new THREE.Box3().setFromObject(this.model);
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z, 0.0001); // Prevent division by zero
+        const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
 
-        // Normalize scale to fit within a unit cube (target size = 2 units)
         this.baseScale = 2 / maxDim;
-        this.modelScale = 1.0; // Reset scale multiplier
+        this.modelScale = 1.0;
 
-        // Apply scale and center the model
         this.model.scale.set(this.baseScale, this.baseScale, this.baseScale);
         this.model.position.sub(center.multiplyScalar(this.baseScale));
-        this.model.position.set(0, 0, 0); // Ensure exact centering at origin
+        this.model.position.set(0, 0, 0);
 
-        // Adjust camera position to frame the model (target size = 2 units)
-        const cameraDistance = 2 * 2.5; // 2 units * 2.5 for optimal framing
+        const cameraDistance = 2 * 2.5;
         this.camera.position.set(0, cameraDistance * 0.5, cameraDistance);
         this.controls.target.set(0, 0, 0);
         this.controls.update();
 
-        // Scale axes helper to match model size (1/2 of model size for visibility)
-        this.axesHelper.scale.set(1, 1, 1); // Axes fixed at 1 unit for consistency
+        this.axesHelper.scale.set(1, 1, 1);
+        this.axesHelper.visible = true;
         this.scene.add(this.model);
         console.log('Modèle traité :', { maxDim, scale: this.baseScale, center });
 
         if (this.isVoxelMode) this.updateVoxelModel();
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
     }
 
     scaleModel(factor) {
         if (!this.model) return;
-        
+
         this.modelScale *= factor;
-        
-        // Appliquer l'échelle au modèle original
+
         this.model.scale.set(
             this.baseScale * this.modelScale,
             this.baseScale * this.modelScale,
             this.baseScale * this.modelScale
         );
-        
-        // MODIFICATION : Si on est en mode voxel, régénérer les voxels avec la nouvelle échelle
-        // au lieu d'appliquer simplement l'échelle au mesh voxel existant
+
         if (this.isVoxelMode && this.voxelMesh) {
-            // Temporairement rendre le modèle visible pour la voxelisation
             this.model.visible = true;
             this.updateVoxelModel();
-            // Remettre le modèle invisible après la voxelisation
             setTimeout(() => {
                 if (this.model) this.model.visible = false;
             }, 100);
         }
-        
+
         console.log('Échelle mise à jour :', { modelScale: this.modelScale });
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
     }
 
     toggleViewMode() {
@@ -253,26 +285,26 @@ class Visualizer3D {
             } else if (this.voxelMesh) {
                 this.scene.remove(this.voxelMesh);
                 this.voxelMesh = null;
+                this.voxelData = null;
             }
         }
+        this.updateExportButton();
+        this.ensureInterfaceVisibility();
     }
 
     rotateModel(axis) {
         if (this.isVoxelMode && this.model) {
-            // MODIFICATION : En mode voxel, appliquer la rotation au modèle original puis régénérer les voxels
-            this.model.rotation[axis] += Math.PI / 2; // 90 degrees
-            
-            // Temporairement rendre le modèle visible pour la voxelisation
+            this.model.rotation[axis] += Math.PI / 2;
             this.model.visible = true;
             this.updateVoxelModel();
-            // Remettre le modèle invisible après la voxelisation
             setTimeout(() => {
                 if (this.model) this.model.visible = false;
             }, 100);
         } else if (this.model) {
-            // Mode normal : appliquer directement au modèle
-            this.model.rotation[axis] += Math.PI / 2; // 90 degrees
+            this.model.rotation[axis] += Math.PI / 2;
         }
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
     }
 
     updateVoxelResolution(event) {
@@ -282,6 +314,8 @@ class Visualizer3D {
             clearTimeout(this.debounceTimeout);
             this.debounceTimeout = setTimeout(() => this.updateVoxelModel(), 300);
         }
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
     }
 
     updateVoxelColor(event) {
@@ -289,6 +323,8 @@ class Visualizer3D {
         if (this.isVoxelMode && this.voxelMesh) {
             this.voxelMesh.material.color.set(this.voxelColor);
         }
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
     }
 
     resetScene() {
@@ -300,27 +336,33 @@ class Visualizer3D {
         }
         this.model = null;
         this.voxelMesh = null;
+        this.voxelData = null;
         this.isVoxelMode = false;
         this.modelScale = 1.0;
         this.baseScale = 1.0;
         this.elements.toggleMode.textContent = 'Passer en mode voxel';
         this.elements.voxelSlider.classList.add('hidden');
-        this.elements.progress.style.display = 'none';
+        this.elements.progress.classList.add('hidden');
+        this.elements.progressPercent.textContent = '0%';
+        this.elements.progressFill.style.width = '0%';
         this.elements.error.classList.add('hidden');
         this.elements.modelInput.value = '';
         this.elements.voxelRes.value = 20;
         this.elements.voxelResValue.textContent = '20';
         this.elements.voxelColor.value = '#aaaaaa';
-        // Reset camera and controls
         this.camera.position.set(0, 0, 5);
         this.controls.target.set(0, 0, 0);
         this.controls.update();
+        this.axesHelper.visible = true;
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
     }
 
     updateVoxelModel() {
         if (!this.model) {
             console.warn('Aucun modèle chargé pour la voxelisation.');
             this.showError('Aucun modèle chargé pour la voxelisation.');
+            this.updateExportButton();
             return;
         }
         if (this.voxelMesh) this.scene.remove(this.voxelMesh);
@@ -330,8 +372,12 @@ class Visualizer3D {
             this.currentWorker = null;
         }
 
-        this.elements.progress.style.display = 'block';
+        console.log('Starting voxelization, showing progress bar...');
+        this.elements.progress.classList.remove('hidden');
+        this.elements.progress.classList.add('visible');
         this.elements.progressPercent.textContent = '0%';
+        this.elements.progressFill.style.width = '0%';
+        this.elements.exportSchem.disabled = true;
 
         this.currentWorker = new Worker(URL.createObjectURL(new Blob([`
             importScripts('https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js');
@@ -341,46 +387,47 @@ class Visualizer3D {
                 const { voxelResolution, box, triangles } = e.data;
                 console.log('Worker received:', { voxelResolution, box, triangleCount: triangles.length });
 
-                // Calculer la taille des voxels pour chaque dimension
-                const size = { x: box.size.x, y: box.size.y, z: box.size.z };
-                const voxelSize = {
-                    x: size.x / voxelResolution,
-                    y: size.y / voxelResolution,
-                    z: size.z / voxelResolution
-                };
-                const grid = new Array(voxelResolution).fill().map(() =>
-                    new Array(voxelResolution).fill().map(() => new Array(voxelResolution).fill(false))
+                const maxDim = Math.max(box.size.x, box.size.y, box.size.z);
+                const voxelSize = maxDim / voxelResolution;
+                const resX = Math.ceil(box.size.x / voxelSize) || 1;
+                const resY = Math.ceil(box.size.y / voxelSize) || 1;
+                const resZ = Math.ceil(box.size.z / voxelSize) || 1;
+
+                const grid = new Array(resX).fill().map(() =>
+                    new Array(resY).fill().map(() => new Array(resZ).fill(false))
                 );
                 let voxelCount = 0;
                 let processedVoxels = 0;
-                const totalVoxels = voxelResolution * voxelResolution * voxelResolution;
+                const totalVoxels = resX * resY * resZ;
+                const voxelPositions = [];
 
                 for (const triangle of triangles) {
                     const { v0, v1, v2 } = triangle;
-                    const minX = Math.max(0, Math.floor((Math.min(v0.x, v1.x, v2.x) - box.min.x) / voxelSize.x));
-                    const maxX = Math.min(voxelResolution - 1, Math.ceil((Math.max(v0.x, v1.x, v2.x) - box.min.x) / voxelSize.x));
-                    const minY = Math.max(0, Math.floor((Math.min(v0.y, v1.y, v2.y) - box.min.y) / voxelSize.y));
-                    const maxY = Math.min(voxelResolution - 1, Math.ceil((Math.max(v0.y, v1.y, v2.y) - box.min.y) / voxelSize.y));
-                    const minZ = Math.max(0, Math.floor((Math.min(v0.z, v1.z, v2.z) - box.min.z) / voxelSize.z));
-                    const maxZ = Math.min(voxelResolution - 1, Math.ceil((Math.max(v0.z, v1.z, v2.z) - box.min.z) / voxelSize.z));
+                    const minX = Math.max(0, Math.floor((Math.min(v0.x, v1.x, v2.x) - box.min.x) / voxelSize));
+                    const maxX = Math.min(resX - 1, Math.ceil((Math.max(v0.x, v1.x, v2.x) - box.min.x) / voxelSize));
+                    const minY = Math.max(0, Math.floor((Math.min(v0.y, v1.y, v2.y) - box.min.y) / voxelSize));
+                    const maxY = Math.min(resY - 1, Math.ceil((Math.max(v0.y, v1.y, v2.y) - box.min.y) / voxelSize));
+                    const minZ = Math.max(0, Math.floor((Math.min(v0.z, v1.z, v2.z) - box.min.z) / voxelSize));
+                    const maxZ = Math.min(resZ - 1, Math.ceil((Math.max(v0.z, v1.z, v2.z) - box.min.z) / voxelSize));
 
                     for (let x = minX; x <= maxX; x++) {
                         for (let y = minY; y <= maxY; y++) {
                             for (let z = minZ; z <= maxZ; z++) {
                                 if (!grid[x][y][z]) {
                                     const voxelMin = {
-                                        x: box.min.x + x * voxelSize.x,
-                                        y: box.min.y + y * voxelSize.y,
-                                        z: box.min.z + z * voxelSize.z
+                                        x: box.min.x + x * voxelSize,
+                                        y: box.min.y + y * voxelSize,
+                                        z: box.min.z + z * voxelSize
                                     };
                                     const voxelMax = {
-                                        x: voxelMin.x + voxelSize.x,
-                                        y: voxelMin.y + voxelSize.y,
-                                        z: voxelMin.z + voxelSize.z
+                                        x: voxelMin.x + voxelSize,
+                                        y: voxelMin.y + voxelSize,
+                                        z: voxelMin.z + voxelSize
                                     };
                                     if (triangleIntersectsAABB(v0, v1, v2, voxelMin, voxelMax)) {
                                         grid[x][y][z] = true;
                                         voxelCount++;
+                                        voxelPositions.push({ x, y, z });
                                     }
                                     processedVoxels++;
                                     if (processedVoxels % 1000 === 0) {
@@ -402,16 +449,15 @@ class Visualizer3D {
                 const maxGeometriesPerBatch = 1000;
                 let currentBatch = [];
 
-                for (let x = 0; x < voxelResolution; x++) {
-                    for (let y = 0; y < voxelResolution; y++) {
-                        for (let z = 0; z < voxelResolution; z++) {
+                for (let x = 0; x < resX; x++) {
+                    for (let y = 0; y < resY; y++) {
+                        for (let z = 0; z < resZ; z++) {
                             if (grid[x][y][z]) {
-                                const geometry = new THREE.BoxGeometry(voxelSize.x, voxelSize.y, voxelSize.z);
-                                // MODIFICATION IMPORTANTE : Positionner les voxels dans l'espace local (centré à l'origine)
+                                const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
                                 geometry.translate(
-                                    box.min.x + (x + 0.5) * voxelSize.x,
-                                    box.min.y + (y + 0.5) * voxelSize.y,
-                                    box.min.z + (z + 0.5) * voxelSize.z
+                                    box.min.x + (x + 0.5) * voxelSize,
+                                    box.min.y + (y + 0.5) * voxelSize,
+                                    box.min.z + (z + 0.5) * voxelSize
                                 );
                                 currentBatch.push(geometry);
                                 if (currentBatch.length >= maxGeometriesPerBatch) {
@@ -464,13 +510,13 @@ class Visualizer3D {
                     normalsCount: finalGeometry.attributes.normal ? finalGeometry.attributes.normal.count : 0
                 });
 
-                // MODIFICATION : Retourner aussi les informations de positionnement
                 self.postMessage({
                     positions: finalGeometry.attributes.position.array,
                     indices: finalGeometry.index ? finalGeometry.index.array : [],
                     normals: finalGeometry.attributes.normal ? finalGeometry.attributes.normal.array : [],
                     voxelCount,
-                    boundingBox: box, // Ajouter la bounding box pour le positionnement
+                    voxelPositions,
+                    boundingBox: box,
                     complete: true
                 });
 
@@ -521,14 +567,22 @@ class Visualizer3D {
         `], { type: 'application/javascript' })));
 
         try {
-            // MODIFICATION IMPORTANTE : Utiliser la bounding box du modèle dans son espace monde (avec transformations)
             const box = new THREE.Box3().setFromObject(this.model);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
+            const voxelSize = maxDim / this.voxelResolution;
+            const resX = Math.ceil(size.x / voxelSize) || 1;
+            const resY = Math.ceil(size.y / voxelSize) || 1;
+            const resZ = Math.ceil(size.z / voxelSize) || 1;
 
-            if (this.voxelResolution ** 3 > 512 * 512 * 512) {
-                this.showError('Résolution trop élevée. Maximum 512.');
-                this.elements.progress.style.display = 'none';
+            if ((resX * resY * resZ) > 512 * 512 * 512) {
+                console.warn('Voxel resolution too high:', { resX, resY, resZ });
+                this.showError('Résolution trop élevée. Maximum 512 par dimension.');
+                this.elements.progress.classList.add('hidden');
+                this.elements.progress.classList.remove('visible');
+                this.elements.progressFill.style.width = '0%';
+                this.updateExportButton();
                 return;
             }
 
@@ -550,34 +604,50 @@ class Visualizer3D {
 
             console.log('Triangles collected:', triangles.length);
             if (triangles.length === 0) {
+                console.warn('No triangles found in model.');
                 this.showError('Aucun triangle trouvé dans le modèle.');
-                this.elements.progress.style.display = 'none';
+                this.elements.progress.classList.add('hidden');
+                this.elements.progress.classList.remove('visible');
+                this.elements.progressFill.style.width = '0%';
+                this.updateExportButton();
                 return;
             }
 
             this.currentWorker.onmessage = (e) => {
+                console.log('Worker message received:', e.data);
                 if (e.data.error) {
                     console.error('Worker error:', e.data.error);
                     this.showError(e.data.error);
-                    this.elements.progress.style.display = 'none';
+                    this.elements.progress.classList.add('hidden');
+                    this.elements.progress.classList.remove('visible');
+                    this.elements.progressFill.style.width = '0%';
                     this.currentWorker.terminate();
                     this.currentWorker = null;
+                    this.updateExportButton();
                     return;
                 }
                 if (e.data.progress) {
-                    this.elements.progressPercent.textContent = `${Math.round(e.data.progress)}%`;
+                    const progress = Math.round(e.data.progress);
+                    console.log('Progress update:', progress);
+                    this.elements.progressPercent.textContent = `${progress}%`;
+                    this.elements.progressFill.style.width = `${progress}%`;
                 } else if (e.data.complete) {
-                    const { positions, indices, normals, voxelCount, boundingBox } = e.data;
+                    const { positions, indices, normals, voxelCount, voxelPositions, boundingBox } = e.data;
                     console.log('Voxelization complete:', { voxelCount, positionCount: positions.length, indicesCount: indices.length, normalsCount: normals.length });
 
                     if (voxelCount === 0 || positions.length === 0) {
                         console.warn('No valid voxel data received.');
                         this.showError('Aucun voxel généré.');
-                        this.elements.progress.style.display = 'none';
+                        this.elements.progress.classList.add('hidden');
+                        this.elements.progress.classList.remove('visible');
+                        this.elements.progressFill.style.width = '0%';
                         this.currentWorker.terminate();
                         this.currentWorker = null;
+                        this.updateExportButton();
                         return;
                     }
+
+                    this.voxelData = { voxelPositions, voxelSize, boundingBox };
 
                     const geometry = new THREE.BufferGeometry();
                     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -589,47 +659,53 @@ class Visualizer3D {
                     }
                     geometry.computeVertexNormals();
 
-                    // Validate geometry
                     if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
                         console.warn('Invalid geometry generated:', geometry);
                         this.showError('Géométrie voxel invalide générée.');
-                        this.elements.progress.style.display = 'none';
+                        this.elements.progress.classList.add('hidden');
+                        this.elements.progress.classList.remove('visible');
+                        this.elements.progressFill.style.width = '0%';
                         this.currentWorker.terminate();
                         this.currentWorker = null;
+                        this.updateExportButton();
                         return;
                     }
 
                     const material = new THREE.MeshStandardMaterial({
                         color: this.voxelColor,
-                        roughness: 0.3,
-                        metalness: 0.1,
+                        roughness: 1,
+                        metalness: 0,
                         side: THREE.DoubleSide
                     });
                     this.voxelMesh = new THREE.Mesh(geometry, material);
                     this.voxelMesh.castShadow = true;
                     this.voxelMesh.receiveShadow = true;
-                    
-                    // MODIFICATION CRITIQUE : Le mesh voxel n'a pas besoin de transformation supplémentaire
-                    // car il est déjà généré dans l'espace monde du modèle original
+
                     this.voxelMesh.scale.set(1, 1, 1);
                     this.voxelMesh.position.set(0, 0, 0);
 
                     this.scene.add(this.voxelMesh);
                     console.log('Voxel mesh added:', { position: this.voxelMesh.position, scale: this.voxelMesh.scale });
 
-                    this.elements.progress.style.display = 'none';
+                    this.elements.progress.classList.add('hidden');
+                    this.elements.progress.classList.remove('visible');
+                    this.elements.progressFill.style.width = '0%';
                     this.clearError();
                     this.currentWorker.terminate();
                     this.currentWorker = null;
+                    this.updateExportButton();
                 }
             };
 
             this.currentWorker.onerror = (err) => {
                 console.error('Erreur dans le Web Worker :', err);
                 this.showError('Erreur dans le Web Worker : ' + err.message);
-                this.elements.progress.style.display = 'none';
+                this.elements.progress.classList.add('hidden');
+                this.elements.progress.classList.remove('visible');
+                this.elements.progressFill.style.width = '0%';
                 this.currentWorker.terminate();
                 this.currentWorker = null;
+                this.updateExportButton();
             };
 
             console.log('Sending data to worker:', { voxelResolution: this.voxelResolution, box, triangleCount: triangles.length });
@@ -637,32 +713,349 @@ class Visualizer3D {
         } catch (err) {
             console.error('Erreur lors de la voxelisation :', err);
             this.showError('Erreur lors de la voxelisation : ' + err.message);
-            this.elements.progress.style.display = 'none';
+            this.elements.progress.classList.add('hidden');
+            this.elements.progress.classList.remove('visible');
+            this.elements.progressFill.style.width = '0%';
             if (this.currentWorker) {
                 this.currentWorker.terminate();
                 this.currentWorker = null;
             }
+            this.updateExportButton();
+        }
+        this.ensureInterfaceVisibility();
+    }
+
+    updateExportButton() {
+        if (this.elements.exportSchem) {
+            this.elements.exportSchem.disabled = !this.isVoxelMode || this.currentWorker || !this.voxelData || !this.voxelMesh;
+            console.log('Export button state updated:', { isVoxelMode: this.isVoxelMode, hasWorker: !!this.currentWorker, hasVoxelData: !!this.voxelData, hasVoxelMesh: !!this.voxelMesh });
+        }
+    }
+
+    exportToSchem() {
+        if (!this.voxelData || !this.voxelMesh) {
+            console.warn('No voxel data available for export.');
+            this.showError('Aucune donnée voxel disponible pour l\'exportation.');
+            return;
+        }
+
+        try {
+            const { voxelPositions, voxelSize, boundingBox } = this.voxelData;
+            const resX = Math.ceil(boundingBox.size.x / voxelSize) || 1;
+            const resY = Math.ceil(boundingBox.size.y / voxelSize) || 1;
+            const resZ = Math.ceil(boundingBox.size.z / voxelSize) || 1;
+
+            console.log('Schematic dimensions:', { width: resX, height: resY, length: resZ });
+
+            // Map voxel color to a Minecraft block
+            const hexColor = this.voxelColor.toString(16).padStart(6, '0');
+            const r = parseInt(hexColor.substr(0, 2), 16);
+            const g = parseInt(hexColor.substr(2, 2), 16);
+            const b = parseInt(hexColor.substr(4, 2), 16);
+            const blockType = this.getClosestMinecraftBlock(r, g, b);
+
+            // Create palette
+            const palette = {
+                'minecraft:air': 0,
+                [blockType]: 1
+            };
+
+            // Create 3D grid
+            const grid = new Array(resX);
+            for (let x = 0; x < resX; x++) {
+                grid[x] = new Array(resY);
+                for (let y = 0; y < resY; y++) {
+                    grid[x][y] = new Array(resZ).fill(0); // 0 for air
+                }
+            }
+
+            // Fill voxel positions
+            voxelPositions.forEach(({ x, y, z }) => {
+                if (x >= 0 && x < resX && y >= 0 && y < resY && z >= 0 && z < resZ) {
+                    grid[x][y][z] = 1; // 1 for block
+                }
+            });
+
+            // Convert to YZX order for Sponge format and store as direct bytes
+            const blockData = new Uint8Array(resX * resY * resZ);
+            let index = 0;
+            for (let y = 0; y < resY; y++) {
+                for (let z = 0; z < resZ; z++) {
+                    for (let x = 0; x < resX; x++) {
+                        blockData[index++] = grid[x][y][z];
+                    }
+                }
+            }
+
+            // Create Sponge Schematic v3 structure with nested 'schematic' compound
+            const nbtData = {
+                type: 'compound',
+                name: 'Schematic',
+                value: {
+                    schematic: {
+                        type: 'compound',
+                        value: {
+                            Version: { type: 'int', value: 3 },
+                            DataVersion: { type: 'int', value: 4189 }, // Minecraft 1.21
+                            Blocks: {
+                                type: 'compound',
+                                value: {
+                                    Palette: {
+                                        type: 'compound',
+                                        value: {}
+                                    },
+                                    Data: { type: 'byteArray', value: blockData }
+                                }
+                            },
+                            Width: { type: 'int', value: resX },
+                            Height: { type: 'int', value: resY },
+                            Length: { type: 'int', value: resZ },
+                            Offset: { type: 'intArray', value: new Int32Array([0, 0, 0]) },
+                            Metadata: {
+                                type: 'compound',
+                                value: {
+                                    WorldEdit: {
+                                        type: 'compound',
+                                        value: {
+                                            Platforms: {
+                                                type: 'compound',
+                                                value: {
+                                                    'intellectualsites:bukkit': {
+                                                        type: 'compound',
+                                                        value: {
+                                                            'AA Name': { type: 'string', value: 'Bukkit-Official' },
+                                                            'AA Version': { type: 'string', value: '2.12.3' }
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            'Editing Platform': { type: 'string', value: 'intellectualsites:bukkit' },
+                                            Version: { type: 'string', value: '2.12.3' },
+                                            Origin: { type: 'intArray', value: new Int32Array([0, 0, 0]) }
+                                        }
+                                    },
+                                    Date: { type: 'long', value: BigInt(Date.now()) }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Add palette entries
+            for (const [blockName, index] of Object.entries(palette)) {
+                nbtData.value.schematic.value.Blocks.value.Palette.value[blockName] = { type: 'int', value: index };
+            }
+
+            // Serialize to NBT
+            const nbtBuffer = this.writeNBT(nbtData);
+
+            // Compress with GZIP
+            if (typeof pako === 'undefined') {
+                console.error('Pako library not found. Cannot compress schematic.');
+                this.showError('Bibliothèque Pako introuvable. Impossible de compresser le schematic.');
+                return;
+            }
+            const compressedBuffer = pako.gzip(nbtBuffer);
+
+            // Download file
+            const blob = new Blob([compressedBuffer], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'voxel_model.schem';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            console.log('Schematic exported:', {
+                width: resX,
+                height: resY,
+                length: resZ,
+                blockCount: voxelPositions.length,
+                blockType: blockType
+            });
+
+        } catch (err) {
+            console.error('Erreur lors de l\'exportation en .schem :', err);
+            this.showError('Erreur lors de l\'exportation en .schem : ' + err.message);
+        }
+    }
+
+    writeNBT(data) {
+        const buffer = [];
+        // Write root compound tag
+        buffer.push(0x0A); // TAG_Compound
+        this.writeString(data.name || 'Schematic', buffer);
+        this.writeCompoundContent(data.value, buffer);
+        return new Uint8Array(buffer);
+    }
+
+    writeCompoundContent(compound, buffer) {
+        for (const [key, tag] of Object.entries(compound)) {
+            this.writeNBTTag(tag, key, buffer);
+        }
+        buffer.push(0x00); // TAG_End
+    }
+
+    writeNBTTag(tag, name, buffer) {
+        const tagId = this.getTagId(tag.type);
+        buffer.push(tagId);
+        this.writeString(name, buffer);
+
+        switch (tag.type) {
+            case 'compound':
+                this.writeCompoundContent(tag.value, buffer);
+                break;
+            case 'int':
+                this.writeInt32(tag.value, buffer);
+                break;
+            case 'short':
+                this.writeInt16(tag.value, buffer);
+                break;
+            case 'long':
+                this.writeInt64(tag.value, buffer);
+                break;
+            case 'byteArray':
+                this.writeInt32(tag.value.length, buffer);
+                for (let i = 0; i < tag.value.length; i++) {
+                    buffer.push(tag.value[i] & 0xFF);
+                }
+                break;
+            case 'intArray':
+                this.writeInt32(tag.value.length, buffer);
+                for (let i = 0; i < tag.value.length; i++) {
+                    this.writeInt32(tag.value[i], buffer);
+                }
+                break;
+            case 'string':
+                this.writeString(tag.value, buffer);
+                break;
+        }
+    }
+
+    writeInt64(value, buffer) {
+        const bigValue = BigInt(value);
+        buffer.push(
+            Number((bigValue >> 56n) & 0xFFn),
+            Number((bigValue >> 48n) & 0xFFn),
+            Number((bigValue >> 40n) & 0xFFn),
+            Number((bigValue >> 32n) & 0xFFn),
+            Number((bigValue >> 24n) & 0xFFn),
+            Number((bigValue >> 16n) & 0xFFn),
+            Number((bigValue >> 8n) & 0xFFn),
+            Number(bigValue & 0xFFn)
+        );
+    }
+
+    writeInt32(value, buffer) {
+        buffer.push(
+            (value >> 24) & 0xFF,
+            (value >> 16) & 0xFF,
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        );
+    }
+
+    writeInt16(value, buffer) {
+        buffer.push(
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        );
+    }
+
+    writeString(str, buffer) {
+        const bytes = new TextEncoder().encode(str);
+        buffer.push((bytes.length >> 8) & 0xFF, bytes.length & 0xFF);
+        bytes.forEach(byte => buffer.push(byte));
+    }
+
+    getTagId(type) {
+        const tagIds = {
+            'byte': 0x01,
+            'short': 0x02,
+            'int': 0x03,
+            'long': 0x04,
+            'float': 0x05,
+            'double': 0x06,
+            'byteArray': 0x07,
+            'string': 0x08,
+            'list': 0x09,
+            'compound': 0x0A,
+            'intArray': 0x0B,
+            'longArray': 0x0C
+        };
+        return tagIds[type] || 0x00;
+    }
+
+    gzipCompress(data) {
+        if (typeof pako === 'undefined') {
+            throw new Error('Pako library not found');
+        }
+        return pako.gzip(data);
+    }
+
+    getClosestMinecraftBlock(r, g, b) {
+        const brightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+        if (r > g && r > b) {
+            return brightness > 0.5 ? 'minecraft:red_concrete' : 'minecraft:red_terracotta';
+        } else if (g > r && g > b) {
+            return brightness > 0.5 ? 'minecraft:lime_concrete' : 'minecraft:green_terracotta';
+        } else if (b > r && b > g) {
+            return brightness > 0.5 ? 'minecraft:light_blue_concrete' : 'minecraft:blue_terracotta';
+        } else {
+            if (brightness > 0.8) return 'minecraft:white_concrete';
+            else if (brightness > 0.6) return 'minecraft:light_gray_concrete';
+            else if (brightness > 0.4) return 'minecraft:gray_concrete';
+            else if (brightness > 0.2) return 'minecraft:black_concrete';
+            else return 'minecraft:obsidian';
+        }
+    }
+
+    ensureInterfaceVisibility() {
+        const interfaceElement = document.getElementById('interface');
+        if (interfaceElement) {
+            interfaceElement.style.display = 'block';
+            interfaceElement.style.visibility = 'visible';
+            interfaceElement.style.opacity = '1';
+            console.log('Interface visibility ensured.');
+        } else {
+            console.error('Interface element (#interface) not found during visibility check.');
         }
     }
 
     showError(message) {
         this.elements.error.classList.remove('hidden');
+        this.elements.error.classList.add('visible');
         this.elements.error.textContent = message;
+        this.ensureInterfaceVisibility();
     }
 
     clearError() {
         this.elements.error.classList.add('hidden');
+        this.elements.error.classList.remove('visible');
         this.elements.error.textContent = '';
+        this.ensureInterfaceVisibility();
     }
 
     showLoading(show) {
-        this.elements.loading.style.display = show ? 'block' : 'none';
+        console.log('Show loading:', show);
+        if (show) {
+            this.elements.loading.classList.remove('hidden');
+            this.elements.loading.classList.add('visible');
+        } else {
+            this.elements.loading.classList.add('hidden');
+            this.elements.loading.classList.remove('visible');
+        }
+        this.ensureInterfaceVisibility();
     }
 
     handleResize() {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.ensureInterfaceVisibility();
     }
 
     animate() {
@@ -673,6 +1066,7 @@ class Visualizer3D {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM content loaded, initializing Visualizer3D...');
     const visualizer = new Visualizer3D();
     visualizer.init();
 });
