@@ -12,6 +12,17 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="prismarine-nbt.js"></script>
+    <script src="schematicGenerator.js"></script>
+    <script>
+        window.addEventListener('load', () => {
+            if (typeof window.nbt === 'undefined') {
+                console.error('prismarine-nbt failed to load. Please check prismarine-nbt.js.');
+            } else {
+                console.log('prismarine-nbt loaded successfully:', window.nbt);
+            }
+        });
+    </script>
 </head>
 <body>
     <div id="interface">
@@ -19,12 +30,10 @@
             <input type="file" id="modelInput" accept=".gltf,.glb,.obj,.stl">
             <span class="tooltip-text">Formats pris en charge : .gltf, .glb, .obj, .stl<br>Fichiers 3D standards pour les modèles. Les fichiers .gltf et .glb incluent souvent des matériaux, tandis que .obj et .stl sont plus simples.</span>
         </div>
-
         <div class="btn-group">
             <button class="btn btn-primary" id="toggleMode">Passer en mode voxel</button>
             <button class="btn" id="resetScene">Réinitialiser</button>
         </div>
-
         <div class="btn-row">
             <button class="btn btn-icon" id="rotateX">↻ X</button>
             <button class="btn btn-icon" id="rotateY">↻ Y</button>
@@ -32,7 +41,6 @@
             <button class="btn btn-icon" id="scaleUp">+</button>
             <button class="btn btn-icon" id="scaleDown">-</button>
         </div>
-
         <div id="voxelSlider" class="hidden">
             <div class="control-group">
                 <label for="voxelRes" class="control-label">Résolution Voxel (10-512):</label>
@@ -48,14 +56,17 @@
             </div>
         </div>
     </div>
-
+    <div>        
+        <div class="circle-container"><div class="circle"></div></div>
+        <div class="circle-container"><div class="circle"></div></div>
+        <div class="circle-container"><div class="circle"></div></div>
+    </div>
     <div id="loading" class="status-message hidden">Chargement du modèle...</div>
     <div id="progress" class="status-message hidden">
         Voxelisation en cours... <span id="progressPercent">0%</span>
         <div class="progress-bar"><div class="progress-fill"></div></div>
     </div>
     <div id="error" class="status-message hidden"></div>
-
     <script src="script.js"></script>
 </body>
 </html>

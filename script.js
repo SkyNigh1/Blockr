@@ -2,13 +2,13 @@ class Visualizer3D {
     constructor() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
         this.model = null;
         this.voxelMesh = null;
         this.isVoxelMode = false;
         this.voxelResolution = 20;
-        this.voxelColor = 0xaaaaaa;
+        this.voxelColor = 0xa7aedc;
         this.currentWorker = null;
         this.debounceTimeout = null;
         this.modelScale = 1.0;
@@ -41,6 +41,9 @@ class Visualizer3D {
         };
     }
 
+    
+
+
     init() {
         console.log('Initializing Visualizer3D...');
         this.setupRenderer();
@@ -63,12 +66,14 @@ class Visualizer3D {
 
     setupRenderer() {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x1a1a1a);
+        this.renderer.setClearColor(0x000000, 0); // Fond transparent
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(this.renderer.domElement);
         this.renderer.domElement.style.zIndex = '1';
-        console.log('Renderer initialized, canvas z-index set to 1.');
+        this.renderer.domElement.style.background = 'transparent';
+        this.renderer.domElement.style.pointerEvents = 'auto'; // Garantit que le canvas capture les événements
+        console.log('Renderer initialized with transparent background, canvas z-index set to 1.');
     }
 
     setupCamera() {
@@ -740,13 +745,6 @@ class Visualizer3D {
         }
 
         try {
-            const { voxelPositions, voxelSize, boundingBox } = this.voxelData;
-            const resX = Math.ceil(boundingBox.size.x / voxelSize) || 1;
-            const resY = Math.ceil(boundingBox.size.y / voxelSize) || 1;
-            const resZ = Math.ceil(boundingBox.size.z / voxelSize) || 1;
-
-            console.log('Schematic dimensions:', { width: resX, height: resY, length: resZ });
-
             // Map voxel color to a Minecraft block
             const hexColor = this.voxelColor.toString(16).padStart(6, '0');
             const r = parseInt(hexColor.substr(0, 2), 16);
@@ -754,127 +752,39 @@ class Visualizer3D {
             const b = parseInt(hexColor.substr(4, 2), 16);
             const blockType = this.getClosestMinecraftBlock(r, g, b);
 
-            // Create palette
-            const palette = {
-                'minecraft:air': 0,
-                [blockType]: 1
-            };
+            // Create schematic generator
+            const generator = new SchematicGenerator(this.voxelData, blockType);
 
-            // Create 3D grid
-            const grid = new Array(resX);
-            for (let x = 0; x < resX; x++) {
-                grid[x] = new Array(resY);
-                for (let y = 0; y < resY; y++) {
-                    grid[x][y] = new Array(resZ).fill(0); // 0 for air
+            // Try prismarine-nbt first, fall back to manual if it fails
+            let result;
+            try {
+                result = generator.generateSchem();
+            } catch (err) {
+                if (err.message.includes('prismarine-nbt')) {
+                    console.warn('Falling back to manual schematic generation due to prismarine-nbt error:', err);
+                    result = generator.generateSchemManual();
+                } else {
+                    throw err;
                 }
             }
-
-            // Fill voxel positions
-            voxelPositions.forEach(({ x, y, z }) => {
-                if (x >= 0 && x < resX && y >= 0 && y < resY && z >= 0 && z < resZ) {
-                    grid[x][y][z] = 1; // 1 for block
-                }
-            });
-
-            // Convert to YZX order for Sponge format and store as direct bytes
-            const blockData = new Uint8Array(resX * resY * resZ);
-            let index = 0;
-            for (let y = 0; y < resY; y++) {
-                for (let z = 0; z < resZ; z++) {
-                    for (let x = 0; x < resX; x++) {
-                        blockData[index++] = grid[x][y][z];
-                    }
-                }
-            }
-
-            // Create Sponge Schematic v3 structure with nested 'schematic' compound
-            const nbtData = {
-                type: 'compound',
-                name: 'Schematic',
-                value: {
-                    schematic: {
-                        type: 'compound',
-                        value: {
-                            Version: { type: 'int', value: 3 },
-                            DataVersion: { type: 'int', value: 4189 }, // Minecraft 1.21
-                            Blocks: {
-                                type: 'compound',
-                                value: {
-                                    Palette: {
-                                        type: 'compound',
-                                        value: {}
-                                    },
-                                    Data: { type: 'byteArray', value: blockData }
-                                }
-                            },
-                            Width: { type: 'int', value: resX },
-                            Height: { type: 'int', value: resY },
-                            Length: { type: 'int', value: resZ },
-                            Offset: { type: 'intArray', value: new Int32Array([0, 0, 0]) },
-                            Metadata: {
-                                type: 'compound',
-                                value: {
-                                    WorldEdit: {
-                                        type: 'compound',
-                                        value: {
-                                            Platforms: {
-                                                type: 'compound',
-                                                value: {
-                                                    'intellectualsites:bukkit': {
-                                                        type: 'compound',
-                                                        value: {
-                                                            'AA Name': { type: 'string', value: 'Bukkit-Official' },
-                                                            'AA Version': { type: 'string', value: '2.12.3' }
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            'Editing Platform': { type: 'string', value: 'intellectualsites:bukkit' },
-                                            Version: { type: 'string', value: '2.12.3' },
-                                            Origin: { type: 'intArray', value: new Int32Array([0, 0, 0]) }
-                                        }
-                                    },
-                                    Date: { type: 'long', value: BigInt(Date.now()) }
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            // Add palette entries
-            for (const [blockName, index] of Object.entries(palette)) {
-                nbtData.value.schematic.value.Blocks.value.Palette.value[blockName] = { type: 'int', value: index };
-            }
-
-            // Serialize to NBT
-            const nbtBuffer = this.writeNBT(nbtData);
-
-            // Compress with GZIP
-            if (typeof pako === 'undefined') {
-                console.error('Pako library not found. Cannot compress schematic.');
-                this.showError('Bibliothèque Pako introuvable. Impossible de compresser le schematic.');
-                return;
-            }
-            const compressedBuffer = pako.gzip(nbtBuffer);
 
             // Download file
-            const blob = new Blob([compressedBuffer], { type: 'application/octet-stream' });
+            const { blob, filename, dimensions, blockCount, blockType: resultBlockType } = result;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'voxel_model.schem';
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             console.log('Schematic exported:', {
-                width: resX,
-                height: resY,
-                length: resZ,
-                blockCount: voxelPositions.length,
-                blockType: blockType
+                width: dimensions.width,
+                height: dimensions.height,
+                length: dimensions.length,
+                blockCount: blockCount,
+                blockType: resultBlockType
             });
 
         } catch (err) {
