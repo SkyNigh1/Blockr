@@ -1,3 +1,4 @@
+// schematicGenerator.js
 import * as nbt from 'https://cdn.skypack.dev/pin/prismarine-nbt@v2.7.0-BbRkbBHdZryTVVYxUet2/mode=imports/optimized/prismarine-nbt.js';
 
 export class SchematicGenerator {
@@ -82,7 +83,10 @@ export class SchematicGenerator {
             }
             const nbtBuffer = await nbt.write(nbtData);
 
-            // Compress with GZIP using pako (handled by zlib polyfill)
+            // Compress with GZIP using the zlib polyfill
+            if (typeof window.zlib === 'undefined') {
+                throw new Error('zlib polyfill not found. Check script inclusion.');
+            }
             const compressedBuffer = window.zlib.gzipSync(nbtBuffer);
             const blob = new Blob([compressedBuffer], { type: 'application/octet-stream' });
 
