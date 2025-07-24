@@ -3,84 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxeliseur 3D</title>
+    <title>3D Model to Voxel Schematic</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/OBJLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js"></script>
-    <script type="module">
-        // Load pako
-        import { gzip, ungzip } from 'https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm';
-
-        // Polyfill zlib with pako
-        window.zlib = {
-            gzipSync: (data) => {
-                try {
-                    return new Uint8Array(gzip(data)); // Ensure Uint8Array output
-                } catch (err) {
-                    throw new Error(`GZIP compression failed: ${err.message}`);
-                }
-            },
-            gunzipSync: (data) => {
-                try {
-                    return new Uint8Array(ungzip(data)); // Ensure Uint8Array output
-                } catch (err) {
-                    throw new Error(`GZIP decompression failed: ${err.message}`);
-                }
-            }
-        };
-
-        // Verify zlib polyfill
-        console.log('zlib polyfill loaded:', !!window.zlib);
-
-        // Load prismarine-nbt
-        import * as nbt from 'https://cdn.skypack.dev/pin/prismarine-nbt@v2.7.0-BbRkbBHdZryTVVYxUet2/mode=imports/optimized/prismarine-nbt.js';
-        window.nbt = nbt;
-        console.log('prismarine-nbt loaded:', !!window.nbt);
-    </script>
-    <script type="module" src="schematicGenerator.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm"></script>
     <script type="module" src="script.js"></script>
 </head>
 <body>
+    <div class="container">
+        <div class="circle-container"><div class="circle"></div></div>
+        <div class="circle-container"><div class="circle"></div></div>
+        <div class="circle-container"><div class="circle"></div></div>
+    </div>
+
     <div id="interface">
         <div class="tooltip">
-            <input type="file" id="modelInput" accept=".gltf,.glb,.obj,.stl">
+            <input type="file" id="modelInput" accept=".gltf,.glb,.obj,.stl" />
             <span class="tooltip-text">Formats pris en charge : .gltf, .glb, .obj, .stl<br>Fichiers 3D standards pour les modèles. Les fichiers .gltf et .glb incluent souvent des matériaux, tandis que .obj et .stl sont plus simples.</span>
         </div>
+
         <div class="btn-group">
-            <button class="btn btn-primary" id="toggleMode">Passer en mode voxel</button>
-            <button class="btn" id="resetScene">Réinitialiser</button>
+            <button id="toggleMode" class="btn btn-primary">Passer en mode voxel</button>
+            <button id="resetScene" class="btn">Réinitialiser</button>
         </div>
+
         <div class="btn-row">
-            <button class="btn btn-icon" id="rotateX">↻ X</button>
-            <button class="btn btn-icon" id="rotateY">↻ Y</button>
-            <button class="btn btn-icon" id="rotateZ">↻ Z</button>
-            <button class="btn btn-icon" id="scaleUp">+</button>
-            <button class="btn btn-icon" id="scaleDown">-</button>
+            <button id="rotateX" class="btn btn-icon" title="Rotation axe X">↻ X</button>
+            <button id="rotateY" class="btn btn-icon" title="Rotation axe Y">↻ Y</button>
+            <button id="rotateZ" class="btn btn-icon" title="Rotation axe Z">↻ Z</button>
+            <button id="scaleUp" class="btn btn-icon" title="Agrandir">+</button>
+            <button id="scaleDown" class="btn btn-icon" title="Réduire">-</button>
         </div>
+
         <div id="voxelSlider" class="hidden">
             <div class="control-group">
                 <label for="voxelRes" class="control-label">Résolution Voxel (10-512):</label>
-                <input type="range" id="voxelRes" min="10" max="512" value="20">
+                <input type="range" id="voxelRes" min="10" max="512" value="20" />
                 <span id="voxelResValue">20</span>
             </div>
             <div class="control-group">
                 <label for="voxelColor" class="control-label">Couleur des voxels:</label>
-                <input type="color" id="voxelColor" value="#aaaaaa">
+                <input type="color" id="voxelColor" value="#aaaaaa" />
             </div>
-            <div class="control-group">
-                <button class="btn btn-primary" id="exportSchem">Exporter en .schem</button>
-            </div>
+            <button id="exportSchem" class="btn btn-primary" disabled>Exporter en .schematic</button>
         </div>
     </div>
-    <div>        
-        <div class="circle-container"><div class="circle"></div></div>
-        <div class="circle-container"><div class="circle"></div></div>
-        <div class="circle-container"><div class="circle"></div></div>
-    </div>
+
     <div id="loading" class="status-message hidden">Chargement du modèle...</div>
     <div id="progress" class="status-message hidden">
         Voxelisation en cours... <span id="progressPercent">0%</span>

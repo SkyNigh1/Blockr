@@ -1,4 +1,4 @@
-import { SchematicGenerator } from './schematicGenerator.js';
+import * as pako from 'https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm';
 
 class Visualizer3D {
     constructor() {
@@ -43,9 +43,6 @@ class Visualizer3D {
         };
     }
 
-    
-
-
     init() {
         console.log('Initializing Visualizer3D...');
         this.setupRenderer();
@@ -68,13 +65,13 @@ class Visualizer3D {
 
     setupRenderer() {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x000000, 0); // Fond transparent
+        this.renderer.setClearColor(0x000000, 0);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(this.renderer.domElement);
         this.renderer.domElement.style.zIndex = '1';
         this.renderer.domElement.style.background = 'transparent';
-        this.renderer.domElement.style.pointerEvents = 'auto'; // Garantit que le canvas capture les événements
+        this.renderer.domElement.style.pointerEvents = 'auto';
         console.log('Renderer initialized with transparent background, canvas z-index set to 1.');
     }
 
@@ -747,47 +744,83 @@ class Visualizer3D {
         }
 
         try {
-            // Map voxel color to a Minecraft block
+            const { voxelPositions, voxelSize, boundingBox } = this.voxelData;
+            const resX = Math.ceil(boundingBox.size.x / voxelSize) || 1;
+            const resY = Math.ceil(boundingBox.size.y / voxelSize) || 1;
+            const resZ = Math.ceil(boundingBox.size.z / voxelSize) || 1;
+
+            console.log('Generating .schematic:', { width: resX, height: resY, length: resZ });
+
+            // Map voxel color to a Minecraft block ID (legacy numeric IDs for .schematic)
             const hexColor = this.voxelColor.toString(16).padStart(6, '0');
             const r = parseInt(hexColor.substr(0, 2), 16);
             const g = parseInt(hexColor.substr(2, 2), 16);
             const b = parseInt(hexColor.substr(4, 2), 16);
-            const blockType = this.getClosestMinecraftBlock(r, g, b);
+            const blockId = this.getClosestMinecraftBlockId(r, g, b);
 
-            // Create schematic generator
-            const generator = new SchematicGenerator(this.voxelData, blockType);
+            // Create 3D grid for blocks and data
+            const blocks = new Uint8Array(resX * resY * resZ).fill(0); // 0 = air
+            const data = new Uint8Array(resX * resY * resZ).fill(0); // Block metadata (0 for simplicity)
 
-            // Generate schematic (now async)
-            const result = await generator.generateSchem();
+            // Fill solid blocks
+            voxelPositions.forEach(({ x, y, z }) => {
+                if (x >= 0 && x < resX && y >= 0 && y < resY && z >= 0 && z < resZ) {
+                    const index = y * resX * resZ + z * resX + x; // YZX order
+                    blocks[index] = blockId;
+                    data[index] = 0; // No metadata needed for concrete/terracotta
+                }
+            });
 
-            // Download file
-            const { blob, filename, dimensions, blockCount, blockType: resultBlockType } = result;
+            // NBT structure for .schematic
+            const nbtData = {
+                type: 'compound',
+                name: 'Schematic',
+                value: {
+                    Materials: { type: 'string', value: 'Alpha' },
+                    Width: { type: 'short', value: resX },
+                    Height: { type: 'short', value: resY },
+                    Length: { type: 'short', value: resZ },
+                    Blocks: { type: 'byteArray', value: blocks },
+                    Data: { type: 'byteArray', value: data },
+                    Entities: { type: 'list', value: { type: 'compound', value: [] } },
+                    TileEntities: { type: 'list', value: { type: 'compound', value: [] } },
+                    WEOffsetX: { type: 'int', value: 0 },
+                    WEOffsetY: { type: 'int', value: 0 },
+                    WEOffsetZ: { type: 'int', value: 0 }
+                }
+            };
+
+            // Write NBT data
+            const nbtBuffer = this.writeNBT(nbtData);
+            const compressedBuffer = pako.gzip(nbtBuffer);
+
+            // Create and download the .schematic file
+            const blob = new Blob([compressedBuffer], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = filename;
+            a.download = 'voxel_model.schematic';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             console.log('Schematic exported:', {
-                width: dimensions.width,
-                height: dimensions.height,
-                length: dimensions.length,
-                blockCount: blockCount,
-                blockType: resultBlockType
+                width: resX,
+                height: resY,
+                length: resZ,
+                blockCount: voxelPositions.length,
+                blockId
             });
 
         } catch (err) {
-            console.error('Erreur lors de l\'exportation en .schem :', err);
-            this.showError('Erreur lors de l\'exportation en .schem : ' + err.message);
+            console.error('Erreur lors de l\'exportation en .schematic :', err);
+            this.showError('Erreur lors de l\'exportation en .schematic : ' + err.message);
         }
     }
 
     writeNBT(data) {
         const buffer = [];
-        // Write root compound tag
         buffer.push(0x0A); // TAG_Compound
         this.writeString(data.name || 'Schematic', buffer);
         this.writeCompoundContent(data.value, buffer);
@@ -833,6 +866,15 @@ class Visualizer3D {
                 break;
             case 'string':
                 this.writeString(tag.value, buffer);
+                break;
+            case 'list':
+                buffer.push(this.getTagId(tag.value.type));
+                this.writeInt32(tag.value.value.length, buffer);
+                if (tag.value.type === 'compound') {
+                    tag.value.value.forEach(item => this.writeCompoundContent(item, buffer));
+                } else {
+                    // Handle other list types if needed
+                }
                 break;
         }
     }
@@ -891,27 +933,20 @@ class Visualizer3D {
         return tagIds[type] || 0x00;
     }
 
-    gzipCompress(data) {
-        if (typeof pako === 'undefined') {
-            throw new Error('Pako library not found');
-        }
-        return pako.gzip(data);
-    }
-
-    getClosestMinecraftBlock(r, g, b) {
+    getClosestMinecraftBlockId(r, g, b) {
         const brightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
         if (r > g && r > b) {
-            return brightness > 0.5 ? 'minecraft:red_concrete' : 'minecraft:red_terracotta';
-        } else if (g > r && g > b) {
-            return brightness > 0.5 ? 'minecraft:lime_concrete' : 'minecraft:green_terracotta';
+            return brightness > 0.5 ? 251 : 159; // 251: red concrete, 159: red stained clay (terracotta)
+        } else if ( g > r && g > b) {
+            return brightness > 0.5 ? 251 : 159; // 251: lime concrete, 159: green stained clay
         } else if (b > r && b > g) {
-            return brightness > 0.5 ? 'minecraft:light_blue_concrete' : 'minecraft:blue_terracotta';
+            return brightness > 0.5 ? 251 : 159; // 251: light blue concrete, 159: blue stained clay
         } else {
-            if (brightness > 0.8) return 'minecraft:white_concrete';
-            else if (brightness > 0.6) return 'minecraft:light_gray_concrete';
-            else if (brightness > 0.4) return 'minecraft:gray_concrete';
-            else if (brightness > 0.2) return 'minecraft:black_concrete';
-            else return 'minecraft:obsidian';
+            if (brightness > 0.8) return 251; // white concrete
+            else if (brightness > 0.6) return 251; // light gray concrete
+            else if (brightness > 0.4) return 251; // gray concrete
+            else if (brightness > 0.2) return 251; // black concrete
+            else return 49; // obsidian
         }
     }
 
