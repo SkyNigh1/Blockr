@@ -12,17 +12,9 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-    <script src="prismarine-nbt.js"></script>
-    <script src="schematicGenerator.js"></script>
-    <script>
-        window.addEventListener('load', () => {
-            if (typeof window.nbt === 'undefined') {
-                console.error('prismarine-nbt failed to load. Please check prismarine-nbt.js.');
-            } else {
-                console.log('prismarine-nbt loaded successfully:', window.nbt);
-            }
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/nbtify@1.8.2/dist/index.min.js"></script>
+    <script type="module" src="schematicGenerator.js"></script>
+    <script type="module" src="script.js"></script>
 </head>
 <body>
     <div id="interface">
@@ -67,6 +59,5 @@
         <div class="progress-bar"><div class="progress-fill"></div></div>
     </div>
     <div id="error" class="status-message hidden"></div>
-    <script src="script.js"></script>
 </body>
 </html>

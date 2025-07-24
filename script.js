@@ -1,3 +1,5 @@
+import { SchematicGenerator } from 'schematicGenerator.js';
+
 class Visualizer3D {
     constructor() {
         this.scene = new THREE.Scene();
@@ -737,7 +739,7 @@ class Visualizer3D {
         }
     }
 
-    exportToSchem() {
+    async exportToSchem() {
         if (!this.voxelData || !this.voxelMesh) {
             console.warn('No voxel data available for export.');
             this.showError('Aucune donnée voxel disponible pour l\'exportation.');
@@ -755,18 +757,8 @@ class Visualizer3D {
             // Create schematic generator
             const generator = new SchematicGenerator(this.voxelData, blockType);
 
-            // Try prismarine-nbt first, fall back to manual if it fails
-            let result;
-            try {
-                result = generator.generateSchem();
-            } catch (err) {
-                if (err.message.includes('prismarine-nbt')) {
-                    console.warn('Falling back to manual schematic generation due to prismarine-nbt error:', err);
-                    result = generator.generateSchemManual();
-                } else {
-                    throw err;
-                }
-            }
+            // Generate schematic (now async)
+            const result = await generator.generateSchem();
 
             // Download file
             const { blob, filename, dimensions, blockCount, blockType: resultBlockType } = result;
