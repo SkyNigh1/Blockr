@@ -1,6 +1,3 @@
-import { gzip } from "https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm";
-
-// Importer prismarine-nbt
 import * as nbt from 'https://cdn.skypack.dev/pin/prismarine-nbt@v2.7.0-BbRkbBHdZryTVVYxUet2/mode=imports/optimized/prismarine-nbt.js';
 
 export class SchematicGenerator {
@@ -29,21 +26,21 @@ export class SchematicGenerator {
                 [this.blockType]: 1
             };
 
-            // Grille 3D remplie à 0 (air)
+            // 3D grid filled with 0 (air)
             const grid = Array.from({ length: resX }, () =>
                 Array.from({ length: resY }, () =>
                     Array(resZ).fill(0)
                 )
             );
 
-            // Remplir les blocs solides (1)
+            // Fill solid blocks (1)
             voxelPositions.forEach(({ x, y, z }) => {
                 if (x >= 0 && x < resX && y >= 0 && y < resY && z >= 0 && z < resZ) {
                     grid[x][y][z] = 1;
                 }
             });
 
-            // Ordre YZX → FAWE format
+            // YZX order for FAWE format
             const blockData = [];
             for (let y = 0; y < resY; y++) {
                 for (let z = 0; z < resZ; z++) {
@@ -53,7 +50,7 @@ export class SchematicGenerator {
                 }
             }
 
-            // Structure NBT pour .schem (format Sponge/WorldEdit)
+            // NBT structure for .schem (Sponge/WorldEdit format)
             const nbtData = {
                 type: 'compound',
                 name: '',
@@ -79,14 +76,14 @@ export class SchematicGenerator {
                 }
             };
 
-            // Écrire les données NBT avec prismarine-nbt
+            // Write NBT data using prismarine-nbt
+            if (typeof nbt === 'undefined') {
+                throw new Error('prismarine-nbt not found. Check script inclusion.');
+            }
             const nbtBuffer = await nbt.write(nbtData);
 
-            // Compresser avec GZIP
-            if (typeof pako === 'undefined') {
-                throw new Error('Pako introuvable. Vérifiez l’inclusion du script.');
-            }
-            const compressedBuffer = gzip(nbtBuffer);
+            // Compress with GZIP using pako (handled by zlib polyfill)
+            const compressedBuffer = window.zlib.gzipSync(nbtBuffer);
             const blob = new Blob([compressedBuffer], { type: 'application/octet-stream' });
 
             return {
@@ -98,8 +95,8 @@ export class SchematicGenerator {
             };
 
         } catch (err) {
-            console.error('Erreur lors de la génération du schematic :', err);
+            console.error('Error generating schematic:', err);
             throw err;
         }
     }
-}   
+}

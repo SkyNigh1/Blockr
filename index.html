@@ -12,8 +12,28 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js"></script>
     <script type="module">
-    import * as nbt from 'https://cdn.skypack.dev/pin/prismarine-nbt@v2.7.0-BbRkbBHdZryTVVYxUet2/mode=imports/optimized/prismarine-nbt.js';
-    window.nbt = nbt; // Rendre nbt disponible globalement
+        // Polyfill zlib with pako
+        import { gzip, ungzip } from 'https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm';
+        window.zlib = {
+            gzipSync: (data) => {
+                try {
+                    return gzip(data);
+                } catch (err) {
+                    throw new Error(`GZIP compression failed: ${err.message}`);
+                }
+            },
+            gunzipSync: (data) => {
+                try {
+                    return ungzip(data);
+                } catch (err) {
+                    throw new Error(`GZIP decompression failed: ${err.message}`);
+                }
+            }
+        };
+
+        // Load prismarine-nbt
+        import * as nbt from 'https://cdn.skypack.dev/pin/prismarine-nbt@v2.7.0-BbRkbBHdZryTVVYxUet2/mode=imports/optimized/prismarine-nbt.js';
+        window.nbt = nbt;
     </script>
     <script type="module" src="schematicGenerator.js"></script>
     <script type="module" src="script.js"></script>
