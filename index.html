@@ -11,6 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/OBJLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js"></script>
+    <script type="module">
+    import * as nbt from 'https://cdn.skypack.dev/pin/prismarine-nbt@v2.7.0-BbRkbBHdZryTVVYxUet2/mode=imports/optimized/prismarine-nbt.js';
+    window.nbt = nbt; // Rendre nbt disponible globalement
+    </script>
     <script type="module" src="schematicGenerator.js"></script>
     <script type="module" src="script.js"></script>
 </head>
