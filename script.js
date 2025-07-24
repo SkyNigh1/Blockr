@@ -1,5 +1,3 @@
-import * as pako from 'https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm';
-
 class Visualizer3D {
     constructor() {
         this.scene = new THREE.Scene();
@@ -65,13 +63,13 @@ class Visualizer3D {
 
     setupRenderer() {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x000000, 0);
+        this.renderer.setClearColor(0x000000, 0); // Fond transparent
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(this.renderer.domElement);
         this.renderer.domElement.style.zIndex = '1';
         this.renderer.domElement.style.background = 'transparent';
-        this.renderer.domElement.style.pointerEvents = 'auto';
+        this.renderer.domElement.style.pointerEvents = 'auto'; // Garantit que le canvas capture les événements
         console.log('Renderer initialized with transparent background, canvas z-index set to 1.');
     }
 
@@ -133,7 +131,7 @@ class Visualizer3D {
         this.elements.scaleDown.addEventListener('click', () => this.scaleModel(0.9));
         this.elements.voxelRes.addEventListener('input', (e) => this.updateVoxelResolution(e));
         this.elements.voxelColor.addEventListener('input', (e) => this.updateVoxelColor(e));
-        this.elements.exportSchem.addEventListener('click', () => this.exportToSchem());
+        this.elements.exportSchem.addEventListener('click', () => this.exportToSchematic());
         window.addEventListener('resize', () => this.handleResize());
         console.log('Event listeners set up successfully.');
     }
@@ -363,371 +361,371 @@ class Visualizer3D {
     }
 
     updateVoxelModel() {
-    if (!this.model) {
-        console.warn('Aucun modèle chargé pour la voxelisation.');
-        this.showError('Aucun modèle chargé pour la voxelisation.');
-        this.updateExportButton();
-        return;
-    }
-    if (this.voxelMesh) this.scene.remove(this.voxelMesh);
-
-    if (this.currentWorker) {
-        this.currentWorker.terminate();
-        this.currentWorker = null;
-    }
-
-    console.log('Starting voxelization, showing progress bar...');
-    this.elements.progress.classList.remove('hidden');
-    this.elements.progress.classList.add('visible');
-    this.elements.progressPercent.textContent = '0%';
-    this.elements.progressFill.style.width = '0%';
-    this.elements.exportSchem.disabled = true;
-
-    this.currentWorker = new Worker(URL.createObjectURL(new Blob([`
-        importScripts('https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js');
-        importScripts('https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js');
-
-        self.onmessage = function(e) {
-            const { voxelResolution, box, triangles } = e.data;
-            console.log('Worker received:', { voxelResolution, box, triangleCount: triangles.length });
-
-            const maxDim = Math.max(box.size.x, box.size.y, box.size.z);
-            const voxelSize = maxDim / voxelResolution;
-            const resX = Math.ceil(box.size.x / voxelSize) || 1;
-            const resY = Math.ceil(box.size.y / voxelSize) || 1;
-            const resZ = Math.ceil(box.size.z / voxelSize) || 1;
-
-            const grid = new Array(resX).fill().map(() =>
-                new Array(resY).fill().map(() => new Array(resZ).fill(false))
-            );
-            let voxelCount = 0;
-            let processedVoxels = 0;
-            const totalVoxels = resX * resY * resZ;
-            const voxelPositions = [];
-
-            for (const triangle of triangles) {
-                const { v0, v1, v2 } = triangle;
-                const minX = Math.max(0, Math.floor((Math.min(v0.x, v1.x, v2.x) - box.min.x) / voxelSize));
-                const maxX = Math.min(resX - 1, Math.ceil((Math.max(v0.x, v1.x, v2.x) - box.min.x) / voxelSize));
-                const minY = Math.max(0, Math.floor((Math.min(v0.y, v1.y, v2.y) - box.min.y) / voxelSize));
-                const maxY = Math.min(resY - 1, Math.ceil((Math.max(v0.y, v1.y, v2.y) - box.min.y) / voxelSize));
-                const minZ = Math.max(0, Math.floor((Math.min(v0.z, v1.z, v2.z) - box.min.z) / voxelSize));
-                const maxZ = Math.min(resZ - 1, Math.ceil((Math.max(v0.z, v1.z, v2.z) - box.min.z) / voxelSize));
-
-                for (let x = minX; x <= maxX; x++) {
-                    for (let y = minY; y <= maxY; y++) {
-                        for (let z = minZ; z <= maxZ; z++) {
-                            if (!grid[x][y][z]) {
-                                const voxelMin = {
-                                    x: box.min.x + x * voxelSize,
-                                    y: box.min.y + y * voxelSize,
-                                    z: box.min.z + z * voxelSize
-                                };
-                                const voxelMax = {
-                                    x: voxelMin.x + voxelSize,
-                                    y: voxelMin.y + voxelSize,
-                                    z: voxelMin.z + voxelSize
-                                };
-                                if (triangleIntersectsAABB(v0, v1, v2, voxelMin, voxelMax)) {
-                                    grid[x][y][z] = true;
-                                    voxelCount++;
-                                    voxelPositions.push({ x, y, z });
-                                }
-                                processedVoxels++;
-                                if (processedVoxels % 1000 === 0) {
-                                    self.postMessage({ progress: Math.min(100, (processedVoxels / totalVoxels) * 100) });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            console.log('Worker: Voxel count:', voxelCount);
-            if (voxelCount === 0) {
-                self.postMessage({ error: 'Aucun voxel généré dans le Worker.' });
-                return;
-            }
-
-            const geometries = [];
-            const maxGeometriesPerBatch = 1000;
-            let currentBatch = [];
-
-            for (let x = 0; x < resX; x++) {
-                for (let y = 0; y < resY; y++) {
-                    for (let z = 0; z < resZ; z++) {
-                        if (grid[x][y][z]) {
-                            const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
-                            geometry.translate(
-                                box.min.x + (x + 0.5) * voxelSize,
-                                box.min.y + (y + 0.5) * voxelSize,
-                                box.min.z + (z + 0.5) * voxelSize
-                            );
-                            currentBatch.push(geometry);
-                            if (currentBatch.length >= maxGeometriesPerBatch) {
-                                const mergedBatch = THREE.BufferGeometryUtils.mergeBufferGeometries(currentBatch);
-                                if (mergedBatch.attributes.position) {
-                                    geometries.push(mergedBatch);
-                                } else {
-                                    console.warn('Worker: Merged batch has no position attribute.');
-                                }
-                                currentBatch = [];
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (currentBatch.length > 0) {
-                const mergedBatch = THREE.BufferGeometryUtils.mergeBufferGeometries(currentBatch);
-                if (mergedBatch.attributes.position) {
-                    geometries.push(mergedBatch);
-                } else {
-                    console.warn('Worker: Final merged batch has no position attribute.');
-                }
-            }
-
-            self.postMessage({ progress: 100 });
-
-            if (geometries.length === 0) {
-                self.postMessage({ error: 'Aucune géométrie générée dans le Worker.' });
-                return;
-            }
-
-            let finalGeometry;
-            try {
-                finalGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
-                finalGeometry.computeVertexNormals();
-            } catch (err) {
-                self.postMessage({ error: 'Erreur lors de la fusion des géométries : ' + err.message });
-                return;
-            }
-
-            if (!finalGeometry.attributes.position || finalGeometry.attributes.position.count === 0) {
-                self.postMessage({ error: 'Aucune géométrie valide générée dans le Worker.' });
-                return;
-            }
-
-            console.log('Worker: Final geometry stats:', {
-                positionCount: finalGeometry.attributes.position.count,
-                indicesCount: finalGeometry.index ? finalGeometry.index.count : 0,
-                normalsCount: finalGeometry.attributes.normal ? finalGeometry.attributes.normal.count : 0
-            });
-
-            self.postMessage({
-                positions: finalGeometry.attributes.position.array,
-                indices: finalGeometry.index ? finalGeometry.index.array : [],
-                normals: finalGeometry.attributes.normal ? finalGeometry.attributes.normal.array : [],
-                voxelCount,
-                voxelPositions,
-                boundingBox: box,
-                complete: true
-            });
-
-            function triangleIntersectsAABB(v0, v1, v2, min, max) {
-                const center = {
-                    x: (min.x + max.x) * 0.5,
-                    y: (min.y + max.y) * 0.5,
-                    z: (min.z + max.z) * 0.5
-                };
-                const extents = {
-                    x: (max.x - min.x) * 0.5,
-                    y: (max.y - min.y) * 0.5,
-                    z: (max.z - min.z) * 0.5
-                };
-
-                const v0p = { x: v0.x - center.x, y: v0.y - center.y, z: v0.z - center.z };
-                const v1p = { x: v1.x - center.x, y: v1.y - center.y, z: v1.z - center.z };
-                const v2p = { x: v2.x - center.x, y: v2.y - center.y, z: v2.z - center.z };
-
-                const e0 = { x: v1p.x - v0p.x, y: v1p.y - v0p.y, z: v1p.z - v0p.z };
-                const e1 = { x: v2p.x - v0p.x, y: v2p.y - v0p.y, z: v2p.z - v0p.z };
-
-                const minX = Math.min(v0p.x, v1p.x, v2p.x);
-                const maxX = Math.max(v0p.x, v1p.x, v2p.x);
-                if (minX > extents.x || maxX < -extents.x) return false;
-
-                const minY = Math.min(v0p.y, v1p.y, v2p.y);
-                const maxY = Math.max(v0p.y, v1p.y, v2p.y);
-                if (minY > extents.y || maxY < -extents.y) return false;
-
-                const minZ = Math.min(v0p.z, v1p.z, v2p.z);
-                const maxZ = Math.max(v0p.z, v1p.z, v2p.z);
-                if (minZ > extents.z || maxZ < -extents.z) return false;
-
-                const normal = {
-                    x: e0.y * e1.z - e0.z * e1.y,
-                    y: e0.z * e1.x - e0.x * e1.z,
-                    z: e0.x * e1.y - e0.y * e1.x
-                };
-                const d = Math.max(
-                    Math.abs(Math.min(v0p.x * normal.x + v0p.y * normal.y + v0p.z * normal.z)),
-                    Math.abs(Math.max(v0p.x * normal.x + v0p.y * normal.y + v0p.z * normal.z))
-                );
-                const r = extents.x * Math.abs(normal.x) + extents.y * Math.abs(normal.y) + extents.z * Math.abs(normal.z);
-                return d <= r;
-            }
-        };
-    `], { type: 'application/javascript' })));
-
-    try {
-        const box = new THREE.Box3().setFromObject(this.model);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
-        const voxelSize = maxDim / this.voxelResolution;
-        const resX = Math.ceil(size.x / voxelSize) || 1;
-        const resY = Math.ceil(size.y / voxelSize) || 1;
-        const resZ = Math.ceil(size.z / voxelSize) || 1;
-
-        if ((resX * resY * resZ) > 512 * 512 * 512) {
-            console.warn('Voxel resolution too high:', { resX, resY, resZ });
-            this.showError('Résolution trop élevée. Maximum 512 par dimension.');
-            this.elements.progress.classList.add('hidden');
-            this.elements.progress.classList.remove('visible');
-            this.elements.progressFill.style.width = '0%';
+        if (!this.model) {
+            console.warn('Aucun modèle chargé pour la voxelisation.');
+            this.showError('Aucun modèle chargé pour la voxelisation.');
             this.updateExportButton();
             return;
         }
+        if (this.voxelMesh) this.scene.remove(this.voxelMesh);
 
-        const triangles = [];
-        this.model.traverse((child) => {
-            if (child.isMesh && child.geometry.isBufferGeometry) {
-                const pos = child.geometry.attributes.position;
-                const indices = child.geometry.index ? child.geometry.index.array : null;
-                const matrix = child.matrixWorld;
-                for (let i = 0; i < (indices ? indices.length : pos.count); i += 3) {
-                    const idx = indices ? [indices[i], indices[i + 1], indices[i + 2]] : [i, i + 1, i + 2];
-                    const v0 = new THREE.Vector3().fromBufferAttribute(pos, idx[0]).applyMatrix4(matrix);
-                    const v1 = new THREE.Vector3().fromBufferAttribute(pos, idx[1]).applyMatrix4(matrix);
-                    const v2 = new THREE.Vector3().fromBufferAttribute(pos, idx[2]).applyMatrix4(matrix);
-                    triangles.push({ v0, v1, v2 });
-                }
-            }
-        });
-
-        console.log('Triangles collected:', triangles.length);
-        if (triangles.length === 0) {
-            console.warn('No triangles found in model.');
-            this.showError('Aucun triangle trouvé dans le modèle.');
-            this.elements.progress.classList.add('hidden');
-            this.elements.progress.classList.remove('visible');
-            this.elements.progressFill.style.width = '0%';
-            this.updateExportButton();
-            return;
-        }
-
-        this.currentWorker.onmessage = (e) => {
-            console.log('Worker message received:', e.data);
-            if (e.data.error) {
-                console.error('Worker error:', e.data.error);
-                this.showError(e.data.error);
-                this.elements.progress.classList.add('hidden');
-                this.elements.progress.classList.remove('visible');
-                this.elements.progressFill.style.width = '0%';
-                this.currentWorker.terminate();
-                this.currentWorker = null;
-                this.updateExportButton();
-                return;
-            }
-            if (e.data.progress) {
-                const progress = Math.round(e.data.progress);
-                console.log('Progress update:', progress);
-                this.elements.progressPercent.textContent = `${progress}%`;
-                this.elements.progressFill.style.width = `${progress}%`;
-            } else if (e.data.complete) {
-                const { positions, indices, normals, voxelCount, voxelPositions, boundingBox } = e.data;
-                console.log('Voxelization complete:', { voxelCount, positionCount: positions.length, indicesCount: indices.length, normalsCount: normals.length });
-
-                if (voxelCount === 0 || positions.length === 0) {
-                    console.warn('No valid voxel data received.');
-                    this.showError('Aucun voxel généré.');
-                    this.elements.progress.classList.add('hidden');
-                    this.elements.progress.classList.remove('visible');
-                    this.elements.progressFill.style.width = '0%';
-                    this.currentWorker.terminate();
-                    this.currentWorker = null;
-                    this.updateExportButton();
-                    return;
-                }
-
-                this.voxelData = { voxelPositions, voxelSize, boundingBox };
-
-                const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-                if (indices.length > 0) {
-                    geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
-                }
-                if (normals.length > 0) {
-                    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-                }
-                geometry.computeVertexNormals();
-
-                if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
-                    console.warn('Invalid geometry generated:', geometry);
-                    this.showError('Géométrie voxel invalide générée.');
-                    this.elements.progress.classList.add('hidden');
-                    this.elements.progress.classList.remove('visible');
-                    this.elements.progressFill.style.width = '0%';
-                    this.currentWorker.terminate();
-                    this.currentWorker = null;
-                    this.updateExportButton();
-                    return;
-                }
-
-                const material = new THREE.MeshStandardMaterial({
-                    color: this.voxelColor,
-                    roughness: 1,
-                    metalness: 0,
-                    side: THREE.DoubleSide
-                });
-                this.voxelMesh = new THREE.Mesh(geometry, material);
-                this.voxelMesh.castShadow = true;
-                this.voxelMesh.receiveShadow = true;
-
-                this.voxelMesh.scale.set(1, 1, 1);
-                this.voxelMesh.position.set(0, 0, 0);
-
-                this.scene.add(this.voxelMesh);
-                console.log('Voxel mesh added:', { position: this.voxelMesh.position, scale: this.voxelMesh.scale });
-
-                this.elements.progress.classList.add('hidden');
-                this.elements.progress.classList.remove('visible');
-                this.elements.progressFill.style.width = '0%';
-                this.clearError();
-                this.currentWorker.terminate();
-                this.currentWorker = null;
-                this.updateExportButton();
-            }
-        };
-
-        this.currentWorker.onerror = (err) => {
-            console.error('Erreur dans le Web Worker :', err);
-            this.showError('Erreur dans le Web Worker : ' + err.message);
-            this.elements.progress.classList.add('hidden');
-            this.elements.progress.classList.remove('visible');
-            this.elements.progressFill.style.width = '0%';
-            this.currentWorker.terminate();
-            this.currentWorker = null;
-            this.updateExportButton();
-        };
-
-        console.log('Sending data to worker:', { voxelResolution: this.voxelResolution, box, triangleCount: triangles.length });
-        this.currentWorker.postMessage({ voxelResolution: this.voxelResolution, box: { min: box.min, size }, triangles });
-    } catch (err) {
-        console.error('Erreur lors de la voxelisation :', err);
-        this.showError('Erreur lors de la voxelisation : ' + err.message);
-        this.elements.progress.classList.add('hidden');
-        this.elements.progress.classList.remove('visible');
-        this.elements.progressFill.style.width = '0%';
         if (this.currentWorker) {
             this.currentWorker.terminate();
             this.currentWorker = null;
         }
-        this.updateExportButton();
+
+        console.log('Starting voxelization, showing progress bar...');
+        this.elements.progress.classList.remove('hidden');
+        this.elements.progress.classList.add('visible');
+        this.elements.progressPercent.textContent = '0%';
+        this.elements.progressFill.style.width = '0%';
+        this.elements.exportSchem.disabled = true;
+
+        this.currentWorker = new Worker(URL.createObjectURL(new Blob([`
+            importScripts('https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js');
+            importScripts('https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/utils/BufferGeometryUtils.js');
+
+            self.onmessage = function(e) {
+                const { voxelResolution, box, triangles } = e.data;
+                console.log('Worker received:', { voxelResolution, box, triangleCount: triangles.length });
+
+                const maxDim = Math.max(box.size.x, box.size.y, box.size.z);
+                const voxelSize = maxDim / voxelResolution;
+                const resX = Math.ceil(box.size.x / voxelSize) || 1;
+                const resY = Math.ceil(box.size.y / voxelSize) || 1;
+                const resZ = Math.ceil(box.size.z / voxelSize) || 1;
+
+                const grid = new Array(resX).fill().map(() =>
+                    new Array(resY).fill().map(() => new Array(resZ).fill(false))
+                );
+                let voxelCount = 0;
+                let processedVoxels = 0;
+                const totalVoxels = resX * resY * resZ;
+                const voxelPositions = [];
+
+                for (const triangle of triangles) {
+                    const { v0, v1, v2 } = triangle;
+                    const minX = Math.max(0, Math.floor((Math.min(v0.x, v1.x, v2.x) - box.min.x) / voxelSize));
+                    const maxX = Math.min(resX - 1, Math.ceil((Math.max(v0.x, v1.x, v2.x) - box.min.x) / voxelSize));
+                    const minY = Math.max(0, Math.floor((Math.min(v0.y, v1.y, v2.y) - box.min.y) / voxelSize));
+                    const maxY = Math.min(resY - 1, Math.ceil((Math.max(v0.y, v1.y, v2.y) - box.min.y) / voxelSize));
+                    const minZ = Math.max(0, Math.floor((Math.min(v0.z, v1.z, v2.z) - box.min.z) / voxelSize));
+                    const maxZ = Math.min(resZ - 1, Math.ceil((Math.max(v0.z, v1.z, v2.z) - box.min.z) / voxelSize));
+
+                    for (let x = minX; x <= maxX; x++) {
+                        for (let y = minY; y <= maxY; y++) {
+                            for (let z = minZ; z <= maxZ; z++) {
+                                if (!grid[x][y][z]) {
+                                    const voxelMin = {
+                                        x: box.min.x + x * voxelSize,
+                                        y: box.min.y + y * voxelSize,
+                                        z: box.min.z + z * voxelSize
+                                    };
+                                    const voxelMax = {
+                                        x: voxelMin.x + voxelSize,
+                                        y: voxelMin.y + voxelSize,
+                                        z: voxelMin.z + voxelSize
+                                    };
+                                    if (triangleIntersectsAABB(v0, v1, v2, voxelMin, voxelMax)) {
+                                        grid[x][y][z] = true;
+                                        voxelCount++;
+                                        voxelPositions.push({ x, y, z });
+                                    }
+                                    processedVoxels++;
+                                    if (processedVoxels % 1000 === 0) {
+                                        self.postMessage({ progress: Math.min(100, (processedVoxels / totalVoxels) * 100) });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                console.log('Worker: Voxel count:', voxelCount);
+                if (voxelCount === 0) {
+                    self.postMessage({ error: 'Aucun voxel généré dans le Worker.' });
+                    return;
+                }
+
+                const geometries = [];
+                const maxGeometriesPerBatch = 1000;
+                let currentBatch = [];
+
+                for (let x = 0; x < resX; x++) {
+                    for (let y = 0; y < resY; y++) {
+                        for (let z = 0; z < resZ; z++) {
+                            if (grid[x][y][z]) {
+                                const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+                                geometry.translate(
+                                    box.min.x + (x + 0.5) * voxelSize,
+                                    box.min.y + (y + 0.5) * voxelSize,
+                                    box.min.z + (z + 0.5) * voxelSize
+                                );
+                                currentBatch.push(geometry);
+                                if (currentBatch.length >= maxGeometriesPerBatch) {
+                                    const mergedBatch = THREE.BufferGeometryUtils.mergeBufferGeometries(currentBatch);
+                                    if (mergedBatch.attributes.position) {
+                                        geometries.push(mergedBatch);
+                                    } else {
+                                        console.warn('Worker: Merged batch has no position attribute.');
+                                    }
+                                    currentBatch = [];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (currentBatch.length > 0) {
+                    const mergedBatch = THREE.BufferGeometryUtils.mergeBufferGeometries(currentBatch);
+                    if (mergedBatch.attributes.position) {
+                        geometries.push(mergedBatch);
+                    } else {
+                        console.warn('Worker: Final merged batch has no position attribute.');
+                    }
+                }
+
+                self.postMessage({ progress: 100 });
+
+                if (geometries.length === 0) {
+                    self.postMessage({ error: 'Aucune géométrie générée dans le Worker.' });
+                    return;
+                }
+
+                let finalGeometry;
+                try {
+                    finalGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
+                    finalGeometry.computeVertexNormals();
+                } catch (err) {
+                    self.postMessage({ error: 'Erreur lors de la fusion des géométries : ' + err.message });
+                    return;
+                }
+
+                if (!finalGeometry.attributes.position || finalGeometry.attributes.position.count === 0) {
+                    self.postMessage({ error: 'Aucune géométrie valide générée dans le Worker.' });
+                    return;
+                }
+
+                console.log('Worker: Final geometry stats:', {
+                    positionCount: finalGeometry.attributes.position.count,
+                    indicesCount: finalGeometry.index ? finalGeometry.index.count : 0,
+                    normalsCount: finalGeometry.attributes.normal ? finalGeometry.attributes.normal.count : 0
+                });
+
+                self.postMessage({
+                    positions: finalGeometry.attributes.position.array,
+                    indices: finalGeometry.index ? finalGeometry.index.array : [],
+                    normals: finalGeometry.attributes.normal ? finalGeometry.attributes.normal.array : [],
+                    voxelCount,
+                    voxelPositions,
+                    boundingBox: box,
+                    complete: true
+                });
+
+                function triangleIntersectsAABB(v0, v1, v2, min, max) {
+                    const center = {
+                        x: (min.x + max.x) * 0.5,
+                        y: (min.y + max.y) * 0.5,
+                        z: (min.z + max.z) * 0.5
+                    };
+                    const extents = {
+                        x: (max.x - min.x) * 0.5,
+                        y: (max.y - min.y) * 0.5,
+                        z: (max.z - min.z) * 0.5
+                    };
+
+                    const v0p = { x: v0.x - center.x, y: v0.y - center.y, z: v0.z - center.z };
+                    const v1p = { x: v1.x - center.x, y: v1.y - center.y, z: v1.z - center.z };
+                    const v2p = { x: v2.x - center.x, y: v2.y - center.y, z: v2.z - center.z };
+
+                    const e0 = { x: v1p.x - v0p.x, y: v1p.y - v0p.y, z: v1p.z - v0p.z };
+                    const e1 = { x: v2p.x - v0p.x, y: v2p.y - v0p.y, z: v2p.z - v0p.z };
+
+                    const minX = Math.min(v0p.x, v1p.x, v2p.x);
+                    const maxX = Math.max(v0p.x, v1p.x, v2p.x);
+                    if (minX > extents.x || maxX < -extents.x) return false;
+
+                    const minY = Math.min(v0p.y, v1p.y, v2p.y);
+                    const maxY = Math.max(v0p.y, v1p.y, v2p.y);
+                    if (minY > extents.y || maxY < -extents.y) return false;
+
+                    const minZ = Math.min(v0p.z, v1p.z, v2p.z);
+                    const maxZ = Math.max(v0p.z, v1p.z, v2p.z);
+                    if (minZ > extents.z || maxZ < -extents.z) return false;
+
+                    const normal = {
+                        x: e0.y * e1.z - e0.z * e1.y,
+                        y: e0.z * e1.x - e0.x * e1.z,
+                        z: e0.x * e1.y - e0.y * e1.x
+                    };
+                    const d = Math.max(
+                        Math.abs(Math.min(v0p.x * normal.x + v0p.y * normal.y + v0p.z * normal.z)),
+                        Math.abs(Math.max(v0p.x * normal.x + v0p.y * normal.y + v0p.z * normal.z))
+                    );
+                    const r = extents.x * Math.abs(normal.x) + extents.y * Math.abs(normal.y) + extents.z * Math.abs(normal.z);
+                    return d <= r;
+                }
+            };
+        `], { type: 'application/javascript' })));
+
+        try {
+            const box = new THREE.Box3().setFromObject(this.model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
+            const voxelSize = maxDim / this.voxelResolution;
+            const resX = Math.ceil(size.x / voxelSize) || 1;
+            const resY = Math.ceil(size.y / voxelSize) || 1;
+            const resZ = Math.ceil(size.z / voxelSize) || 1;
+
+            if ((resX * resY * resZ) > 512 * 512 * 512) {
+                console.warn('Voxel resolution too high:', { resX, resY, resZ });
+                this.showError('Résolution trop élevée. Maximum 512 par dimension.');
+                this.elements.progress.classList.add('hidden');
+                this.elements.progress.classList.remove('visible');
+                this.elements.progressFill.style.width = '0%';
+                this.updateExportButton();
+                return;
+            }
+
+            const triangles = [];
+            this.model.traverse((child) => {
+                if (child.isMesh && child.geometry.isBufferGeometry) {
+                    const pos = child.geometry.attributes.position;
+                    const indices = child.geometry.index ? child.geometry.index.array : null;
+                    const matrix = child.matrixWorld;
+                    for (let i = 0; i < (indices ? indices.length : pos.count); i += 3) {
+                        const idx = indices ? [indices[i], indices[i + 1], indices[i + 2]] : [i, i + 1, i + 2];
+                        const v0 = new THREE.Vector3().fromBufferAttribute(pos, idx[0]).applyMatrix4(matrix);
+                        const v1 = new THREE.Vector3().fromBufferAttribute(pos, idx[1]).applyMatrix4(matrix);
+                        const v2 = new THREE.Vector3().fromBufferAttribute(pos, idx[2]).applyMatrix4(matrix);
+                        triangles.push({ v0, v1, v2 });
+                    }
+                }
+            });
+
+            console.log('Triangles collected:', triangles.length);
+            if (triangles.length === 0) {
+                console.warn('No triangles found in model.');
+                this.showError('Aucun triangle trouvé dans le modèle.');
+                this.elements.progress.classList.add('hidden');
+                this.elements.progress.classList.remove('visible');
+                this.elements.progressFill.style.width = '0%';
+                this.updateExportButton();
+                return;
+            }
+
+            this.currentWorker.onmessage = (e) => {
+                console.log('Worker message received:', e.data);
+                if (e.data.error) {
+                    console.error('Worker error:', e.data.error);
+                    this.showError(e.data.error);
+                    this.elements.progress.classList.add('hidden');
+                    this.elements.progress.classList.remove('visible');
+                    this.elements.progressFill.style.width = '0%';
+                    this.currentWorker.terminate();
+                    this.currentWorker = null;
+                    this.updateExportButton();
+                    return;
+                }
+                if (e.data.progress) {
+                    const progress = Math.round(e.data.progress);
+                    console.log('Progress update:', progress);
+                    this.elements.progressPercent.textContent = `${progress}%`;
+                    this.elements.progressFill.style.width = `${progress}%`;
+                } else if (e.data.complete) {
+                    const { positions, indices, normals, voxelCount, voxelPositions, boundingBox } = e.data;
+                    console.log('Voxelization complete:', { voxelCount, positionCount: positions.length, indicesCount: indices.length, normalsCount: normals.length });
+
+                    if (voxelCount === 0 || positions.length === 0) {
+                        console.warn('No valid voxel data received.');
+                        this.showError('Aucun voxel généré.');
+                        this.elements.progress.classList.add('hidden');
+                        this.elements.progress.classList.remove('visible');
+                        this.elements.progressFill.style.width = '0%';
+                        this.currentWorker.terminate();
+                        this.currentWorker = null;
+                        this.updateExportButton();
+                        return;
+                    }
+
+                    this.voxelData = { voxelPositions, voxelSize, boundingBox };
+
+                    const geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                    if (indices.length > 0) {
+                        geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+                    }
+                    if (normals.length > 0) {
+                        geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                    }
+                    geometry.computeVertexNormals();
+
+                    if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
+                        console.warn('Invalid geometry generated:', geometry);
+                        this.showError('Géométrie voxel invalide générée.');
+                        this.elements.progress.classList.add('hidden');
+                        this.elements.progress.classList.remove('visible');
+                        this.elements.progressFill.style.width = '0%';
+                        this.currentWorker.terminate();
+                        this.currentWorker = null;
+                        this.updateExportButton();
+                        return;
+                    }
+
+                    const material = new THREE.MeshStandardMaterial({
+                        color: this.voxelColor,
+                        roughness: 1,
+                        metalness: 0,
+                        side: THREE.DoubleSide
+                    });
+                    this.voxelMesh = new THREE.Mesh(geometry, material);
+                    this.voxelMesh.castShadow = true;
+                    this.voxelMesh.receiveShadow = true;
+
+                    this.voxelMesh.scale.set(1, 1, 1);
+                    this.voxelMesh.position.set(0, 0, 0);
+
+                    this.scene.add(this.voxelMesh);
+                    console.log('Voxel mesh added:', { position: this.voxelMesh.position, scale: this.voxelMesh.scale });
+
+                    this.elements.progress.classList.add('hidden');
+                    this.elements.progress.classList.remove('visible');
+                    this.elements.progressFill.style.width = '0%';
+                    this.clearError();
+                    this.currentWorker.terminate();
+                    this.currentWorker = null;
+                    this.updateExportButton();
+                }
+            };
+
+            this.currentWorker.onerror = (err) => {
+                console.error('Erreur dans le Web Worker :', err);
+                this.showError('Erreur dans le Web Worker : ' + err.message);
+                this.elements.progress.classList.add('hidden');
+                this.elements.progress.classList.remove('visible');
+                this.elements.progressFill.style.width = '0%';
+                this.currentWorker.terminate();
+                this.currentWorker = null;
+                this.updateExportButton();
+            };
+
+            console.log('Sending data to worker:', { voxelResolution: this.voxelResolution, box, triangleCount: triangles.length });
+            this.currentWorker.postMessage({ voxelResolution: this.voxelResolution, box: { min: box.min, size }, triangles });
+        } catch (err) {
+            console.error('Erreur lors de la voxelisation :', err);
+            this.showError('Erreur lors de la voxelisation : ' + err.message);
+            this.elements.progress.classList.add('hidden');
+            this.elements.progress.classList.remove('visible');
+            this.elements.progressFill.style.width = '0%';
+            if (this.currentWorker) {
+                this.currentWorker.terminate();
+                this.currentWorker = null;
+            }
+            this.updateExportButton();
+        }
+        this.ensureInterfaceVisibility();
     }
-    this.ensureInterfaceVisibility();
-}
 
     updateExportButton() {
         if (this.elements.exportSchem) {
@@ -736,7 +734,7 @@ class Visualizer3D {
         }
     }
 
-    async exportToSchem() {
+    exportToSchematic() {
         if (!this.voxelData || !this.voxelMesh) {
             console.warn('No voxel data available for export.');
             this.showError('Aucune donnée voxel disponible pour l\'exportation.');
@@ -744,73 +742,36 @@ class Visualizer3D {
         }
 
         try {
-            const { voxelPositions, voxelSize, boundingBox } = this.voxelData;
-            const resX = Math.ceil(boundingBox.size.x / voxelSize) || 1;
-            const resY = Math.ceil(boundingBox.size.y / voxelSize) || 1;
-            const resZ = Math.ceil(boundingBox.size.z / voxelSize) || 1;
-
-            console.log('Generating .schematic:', { width: resX, height: resY, length: resZ });
-
-            // Map voxel color to a Minecraft block ID (legacy numeric IDs for .schematic)
+            // Map voxel color to a Minecraft block ID
             const hexColor = this.voxelColor.toString(16).padStart(6, '0');
             const r = parseInt(hexColor.substr(0, 2), 16);
             const g = parseInt(hexColor.substr(2, 2), 16);
             const b = parseInt(hexColor.substr(4, 2), 16);
             const blockId = this.getClosestMinecraftBlockId(r, g, b);
 
-            // Create 3D grid for blocks and data
-            const blocks = new Uint8Array(resX * resY * resZ).fill(0); // 0 = air
-            const data = new Uint8Array(resX * resY * resZ).fill(0); // Block metadata (0 for simplicity)
+            // Create schematic generator
+            const generator = new SchematicGenerator(this.voxelData, blockId);
 
-            // Fill solid blocks
-            voxelPositions.forEach(({ x, y, z }) => {
-                if (x >= 0 && x < resX && y >= 0 && y < resY && z >= 0 && z < resZ) {
-                    const index = y * resX * resZ + z * resX + x; // YZX order
-                    blocks[index] = blockId;
-                    data[index] = 0; // No metadata needed for concrete/terracotta
-                }
-            });
+            // Generate .schematic file
+            const result = generator.generateSchematic();
 
-            // NBT structure for .schematic
-            const nbtData = {
-                type: 'compound',
-                name: 'Schematic',
-                value: {
-                    Materials: { type: 'string', value: 'Alpha' },
-                    Width: { type: 'short', value: resX },
-                    Height: { type: 'short', value: resY },
-                    Length: { type: 'short', value: resZ },
-                    Blocks: { type: 'byteArray', value: blocks },
-                    Data: { type: 'byteArray', value: data },
-                    Entities: { type: 'list', value: { type: 'compound', value: [] } },
-                    TileEntities: { type: 'list', value: { type: 'compound', value: [] } },
-                    WEOffsetX: { type: 'int', value: 0 },
-                    WEOffsetY: { type: 'int', value: 0 },
-                    WEOffsetZ: { type: 'int', value: 0 }
-                }
-            };
-
-            // Write NBT data
-            const nbtBuffer = this.writeNBT(nbtData);
-            const compressedBuffer = pako.gzip(nbtBuffer);
-
-            // Create and download the .schematic file
-            const blob = new Blob([compressedBuffer], { type: 'application/octet-stream' });
+            // Download file
+            const { blob, filename, dimensions, blockCount, blockId: resultBlockId } = result;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'voxel_model.schematic';
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             console.log('Schematic exported:', {
-                width: resX,
-                height: resY,
-                length: resZ,
-                blockCount: voxelPositions.length,
-                blockId
+                width: dimensions.width,
+                height: dimensions.height,
+                length: dimensions.length,
+                blockCount: blockCount,
+                blockId: resultBlockId
             });
 
         } catch (err) {
@@ -821,6 +782,7 @@ class Visualizer3D {
 
     writeNBT(data) {
         const buffer = [];
+        // Write root compound tag
         buffer.push(0x0A); // TAG_Compound
         this.writeString(data.name || 'Schematic', buffer);
         this.writeCompoundContent(data.value, buffer);
@@ -866,15 +828,6 @@ class Visualizer3D {
                 break;
             case 'string':
                 this.writeString(tag.value, buffer);
-                break;
-            case 'list':
-                buffer.push(this.getTagId(tag.value.type));
-                this.writeInt32(tag.value.value.length, buffer);
-                if (tag.value.type === 'compound') {
-                    tag.value.value.forEach(item => this.writeCompoundContent(item, buffer));
-                } else {
-                    // Handle other list types if needed
-                }
                 break;
         }
     }
@@ -933,20 +886,28 @@ class Visualizer3D {
         return tagIds[type] || 0x00;
     }
 
+    gzipCompress(data) {
+        if (typeof pako === 'undefined') {
+            throw new Error('Pako library not found');
+        }
+        return pako.gzip(data);
+    }
+
     getClosestMinecraftBlockId(r, g, b) {
+        // Map RGB to a Minecraft block ID compatible with the "Alpha" material palette (pre-1.13)
         const brightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
         if (r > g && r > b) {
-            return brightness > 0.5 ? 251 : 159; // 251: red concrete, 159: red stained clay (terracotta)
-        } else if ( g > r && g > b) {
-            return brightness > 0.5 ? 251 : 159; // 251: lime concrete, 159: green stained clay
+            return brightness > 0.5 ? 35 : 159; // 35 = Wool (Red), 159 = Stained Clay (Red)
+        } else if (g > r && g > b) {
+            return brightness > 0.5 ? 35 : 159; // 35 = Wool (Lime), 159 = Stained Clay (Green)
         } else if (b > r && b > g) {
-            return brightness > 0.5 ? 251 : 159; // 251: light blue concrete, 159: blue stained clay
+            return brightness > 0.5 ? 35 : 159; // 35 = Wool (Light Blue), 159 = Stained Clay (Blue)
         } else {
-            if (brightness > 0.8) return 251; // white concrete
-            else if (brightness > 0.6) return 251; // light gray concrete
-            else if (brightness > 0.4) return 251; // gray concrete
-            else if (brightness > 0.2) return 251; // black concrete
-            else return 49; // obsidian
+            if (brightness > 0.8) return 35; // 35 = Wool (White)
+            else if (brightness > 0.6) return 35; // 35 = Wool (Light Gray)
+            else if (brightness > 0.4) return 35; // 35 = Wool (Gray)
+            else if (brightness > 0.2) return 35; // 35 = Wool (Black)
+            else return 49; // 49 = Obsidian
         }
     }
 
@@ -999,6 +960,161 @@ class Visualizer3D {
         requestAnimationFrame(() => this.animate());
         this.controls.update();
         this.renderer.render(this.scene, this.camera);
+    }
+}
+
+class SchematicGenerator {
+    constructor(voxelData, blockId) {
+        this.voxelData = voxelData;
+        this.blockId = blockId;
+        this.voxelPositions = voxelData.voxelPositions;
+        this.voxelSize = voxelData.voxelSize;
+        this.boundingBox = voxelData.boundingBox;
+    }
+
+    generateSchematic() {
+        // Calculate dimensions
+        const minX = Math.min(...this.voxelPositions.map(p => p.x));
+        const maxX = Math.max(...this.voxelPositions.map(p => p.x));
+        const minY = Math.min(...this.voxelPositions.map(p => p.y));
+        const maxY = Math.max(...this.voxelPositions.map(p => p.y));
+        const minZ = Math.min(...this.voxelPositions.map(p => p.z));
+        const maxZ = Math.max(...this.voxelPositions.map(p => p.z));
+
+        const width = maxX - minX + 1;
+        const height = maxY - minY + 1;
+        const length = maxZ - minZ + 1;
+
+        // Initialize blocks and data arrays
+        const volume = width * height * length;
+        const blocks = new Uint8Array(volume).fill(0); // Air by default
+        const data = new Uint8Array(volume).fill(0); // Metadata (0 for simplicity)
+
+        // Fill blocks array with blockId where voxels exist
+        for (const pos of this.voxelPositions) {
+            const x = pos.x - minX;
+            const y = pos.y - minY;
+            const z = pos.z - minZ;
+            const index = x + z * width + y * width * length; // Y-up ordering for .schematic
+            blocks[index] = this.blockId;
+        }
+
+        // Create NBT structure
+        const nbtData = {
+            name: 'Schematic',
+            value: {
+                Width: { type: 'short', value: width },
+                Height: { type: 'short', value: height },
+                Length: { type: 'short', value: length },
+                Materials: { type: 'string', value: 'Alpha' },
+                Blocks: { type: 'byteArray', value: blocks },
+                Data: { type: 'byteArray', value: data },
+                WEOffsetX: { type: 'int', value: 0 },
+                WEOffsetY: { type: 'int', value: 0 },
+                WEOffsetZ: { type: 'int', value: 0 }
+            }
+        };
+
+        // Write NBT and compress
+        const nbtBuffer = this.writeNBT(nbtData);
+        const compressed = this.gzipCompress(nbtBuffer);
+
+        return {
+            blob: new Blob([compressed], { type: 'application/octet-stream' }),
+            filename: 'model.schematic',
+            dimensions: { width, height, length },
+            blockCount: this.voxelPositions.length,
+            blockId: this.blockId
+        };
+    }
+
+    writeNBT(data) {
+        const buffer = [];
+        buffer.push(0x0A); // TAG_Compound
+        this.writeString(data.name || 'Schematic', buffer);
+        this.writeCompoundContent(data.value, buffer);
+        return new Uint8Array(buffer);
+    }
+
+    writeCompoundContent(compound, buffer) {
+        for (const [key, tag] of Object.entries(compound)) {
+            this.writeNBTTag(tag, key, buffer);
+        }
+        buffer.push(0x00); // TAG_End
+    }
+
+    writeNBTTag(tag, name, buffer) {
+        const tagId = this.getTagId(tag.type);
+        buffer.push(tagId);
+        this.writeString(name, buffer);
+
+        switch (tag.type) {
+            case 'compound':
+                this.writeCompoundContent(tag.value, buffer);
+                break;
+            case 'int':
+                this.writeInt32(tag.value, buffer);
+                break;
+            case 'short':
+                this.writeInt16(tag.value, buffer);
+                break;
+            case 'byteArray':
+                this.writeInt32(tag.value.length, buffer);
+                for (let i = 0; i < tag.value.length; i++) {
+                    buffer.push(tag.value[i] & 0xFF);
+                }
+                break;
+            case 'string':
+                this.writeString(tag.value, buffer);
+                break;
+        }
+    }
+
+    writeInt32(value, buffer) {
+        buffer.push(
+            (value >> 24) & 0xFF,
+            (value >> 16) & 0xFF,
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        );
+    }
+
+    writeInt16(value, buffer) {
+        buffer.push(
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        );
+    }
+
+    writeString(str, buffer) {
+        const bytes = new TextEncoder().encode(str);
+        buffer.push((bytes.length >> 8) & 0xFF, bytes.length & 0xFF);
+        bytes.forEach(byte => buffer.push(byte));
+    }
+
+    getTagId(type) {
+        const tagIds = {
+            'byte': 0x01,
+            'short': 0x02,
+            'int': 0x03,
+            'long': 0x04,
+            'float': 0x05,
+            'double': 0x06,
+            'byteArray': 0x07,
+            'string': 0x08,
+            'list': 0x09,
+            'compound': 0x0A,
+            'intArray': 0x0B,
+            'longArray': 0x0C
+        };
+        return tagIds[type] || 0x00;
+    }
+
+    gzipCompress(data) {
+        if (typeof pako === 'undefined') {
+            throw new Error('Pako library not found');
+        }
+        return pako.gzip(data);
     }
 }
 
