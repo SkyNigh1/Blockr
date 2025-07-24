@@ -1,4 +1,4 @@
-import { SchematicGenerator } from 'schematicGenerator.js';
+import { SchematicGenerator } from './schematicGenerator.js';
 
 class Visualizer3D {
     constructor() {
