@@ -28,6 +28,7 @@ class Visualizer3D {
             rotateZ: document.getElementById('rotateZ'),
             scaleUp: document.getElementById('scaleUp'),
             scaleDown: document.getElementById('scaleDown'),
+            resetPosition: document.getElementById('resetPosition'),
             voxelSlider: document.getElementById('voxelSlider'),
             voxelRes: document.getElementById('voxelRes'),
             voxelResValue: document.getElementById('voxelResValue'),
@@ -169,6 +170,10 @@ class Visualizer3D {
         this.elements.rotateZ.addEventListener('click', () => this.rotateModel('z'));
         this.elements.scaleUp.addEventListener('click', () => this.scaleModel(1.1));
         this.elements.scaleDown.addEventListener('click', () => this.scaleModel(0.9));
+        this.elements.resetPosition.addEventListener('click', () => {
+            console.log('Resetting model position...');
+            this.resetModelPosition();
+        });
         this.elements.voxelRes.addEventListener('input', (e) => this.updateVoxelResolution(e));
         this.elements.voxelColor.addEventListener('input', (e) => this.updateVoxelColor(e));
         this.elements.exportSchem.addEventListener('click', () => {
@@ -389,7 +394,7 @@ class Visualizer3D {
             console.warn('No model to rotate.');
             return;
         }
-        this.model.rotation[axis] += Math.PI / 2;
+        this.model.rotation[axis] += Math.PI / 4;
         if (this.isVoxelMode) {
             this.model.visible = true;
             this.updateVoxelModel();
@@ -398,6 +403,39 @@ class Visualizer3D {
             }, 100);
         }
         console.log(`Model rotated on ${axis}-axis:`, this.model.rotation[axis]);
+        this.renderer.render(this.scene, this.camera); // Force render
+        this.ensureInterfaceVisibility();
+        this.updateExportButton();
+    }
+
+    resetModelPosition() {
+        if (!this.model) {
+            console.warn('No model to reset position.');
+            return;
+        }
+
+        const box = new THREE.Box3().setFromObject(this.model);
+        const center = box.getCenter(new THREE.Vector3());
+        this.model.position.sub(center); // Déplace le modèle pour que son centre soit à (0, 0, 0)
+
+        if (this.isVoxelMode && this.voxelMesh) {
+            this.model.visible = true;
+            this.updateVoxelModel();
+            setTimeout(() => {
+                if (this.model) this.model.visible = false;
+            }, 100);
+        }
+
+        // Réinitialise la cible des contrôles et repositionne la caméra
+        this.controls.target.set(0, 0, 0);
+        const distance = this.camera.position.distanceTo(this.controls.target); // Distance actuelle
+        const offset = new THREE.Vector3(0, distance * 0.5, distance); // Recalcule une position cohérente
+        this.camera.position.copy(offset);
+        this.camera.lookAt(0, 0, 0);
+        this.camera.updateProjectionMatrix();
+        this.controls.update();
+
+        console.log('Model position reset:', { newPosition: this.model.position.toArray(), center: center.toArray(), cameraPosition: this.camera.position.toArray() });
         this.renderer.render(this.scene, this.camera); // Force render
         this.ensureInterfaceVisibility();
         this.updateExportButton();
@@ -935,7 +973,7 @@ class Visualizer3D {
             return;
         }
         this.elements.modelStatus.className = 'status-message';
-        const logoHtml = '<div class="logo-container"><img src="img/logo.png" alt="Logo" style="width: 74px; height: 24px;"></div>';
+        const logoHtml = '<div class="logo-container"><img src="img/logo.png" alt="Logo" style="width: 71px; height: 24px;"></div>';
         let statusContent = '';
         switch (state) {
             case 'waiting':
