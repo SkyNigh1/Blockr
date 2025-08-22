@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkymcDB • 2D Gradient</title>
+  <link rel="stylesheet" href="style2d.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <canvas id="background-canvas"></canvas>
+
+  <nav>
+    <div class="container">
+      <a href="#" class="logo">SkymcDB • Alpha</a>
+      <div class="nav-links">
+        <div class="dropdown">
+          <a href="#" class="dropdown-toggle">Gradients</a>
+          <div class="dropdown-menu">
+            <a href="index.html">Gradient 1D</a>
+            <a href="gradient2D.html">Gradient 2D</a>
+            <a href="gradient3D.html">Gradient 3D</a>
+          </div>
+        </div>
+        <a href="#">Noises</a>
+        <a href="#">Palette</a>
+        <a href="#">Pixel Art</a>
+        <a href="#">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <h1>2D Minecraft blocks gradient</h1>
+    <p class="description">
+      Choose four sources (block or color) for the corners, then adjust the size. The gradient is filled with the nearest blocks in medium color using bilinear interpolation.
+    </p>
+
+    <div class="layout-container">
+      <div class="sources">
+        <div class="source-card" onclick="openModal('sourceTL')">
+          <div class="source-text">
+            <h2>Top-Left</h2>
+            <p id="sourceTL-label">Minecraft block or color</p>
+          </div>
+          <img id="sourceTL-img" class="hidden" alt="Source Top-Left">
+        </div>
+        <div class="source-card" onclick="openModal('sourceTR')">
+          <div class="source-text">
+            <h2>Top-Right</h2>
+            <p id="sourceTR-label">Minecraft block or color</p>
+          </div>
+          <img id="sourceTR-img" class="hidden" alt="Source Top-Right">
+        </div>
+        <div class="source-card" onclick="openModal('sourceBL')">
+          <div class="source-text">
+            <h2>Bottom-Left</h2>
+            <p id="sourceBL-label">Minecraft block or color</p>
+          </div>
+          <img id="sourceBL-img" class="hidden" alt="Source Bottom-Left">
+        </div>
+        <div class="source-card" onclick="openModal('sourceBR')">
+          <div class="source-text">
+            <h2>Bottom-Right</h2>
+            <p id="sourceBR-label">Minecraft block or color</p>
+          </div>
+          <img id="sourceBR-img" class="hidden" alt="Source Bottom-Right">
+        </div>
+      </div>
+
+      <div class="gradient-container">
+        <div id="gradient" class="gradient"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div>
+        <label for="size">Size (n x n)</label>
+        <input type="number" id="size" min="2" max="64" value="16">
+      </div>
+      <div>
+        <label for="fill-mode">Filling</label>
+        <select id="fill-mode">
+          <option value="blocks">Close blocks</option>
+          <option value="exact">Accurate colours</option>
+        </select>
+      </div>
+      <div>
+        <label for="view-mode">View of textures</label>
+        <select id="view-mode">
+          <option value="both">Both</option>
+          <option value="top">Top</option>
+          <option value="side">Side</option>
+        </select>
+      </div>
+      <div class="button-group">
+        <button id="copy">Copy the list</button>
+        <button id="surprise">Surprise</button>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Choose a block or color</h2>
+      <div class="modal-tabs">
+        <button id="tab-blocks" class="tab-button">Minecraft Blocks</button>
+        <button id="tab-color" class="tab-button">Free Color</button>
+        <button id="close-modal" class="tab-button close">Close</button>
+      </div>
+      <div id="blocks-content" class="blocks-grid"></div>
+      <div id="color-content" class="hidden">
+        <input type="color" id="color-picker">
+        <button id="use-color">Use this color</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>SkymcDB</h3>
+          <p>Create stunning Minecraft block gradients with ease.</p>
+        </div>
+        <div class="footer-section">
+          <h3>Explore</h3>
+          <ul>
+            <li><a href="index.html">1D Gradient</a></li>
+            <li><a href="gradient2D.html">2D Gradient</a></li>
+            <li><a href="#">Noises</a></li>
+            <li><a href="#">Palette</a></li>
+            <li><a href="#">Pixel Art</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Connect</h3>
+          <ul>
+            <li><a href="#">Instagram</a></li>
+            <li><a href="#">Discord</a></li>
+            <li><a href="#">X</a></li>
+            <li><a href="#">GitHub</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Legal</h3>
+          <ul>
+            <li><a href="#">Privacy Policy</a></li>
+            <li><a href="#">Terms of Use</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2025 SkymcDB. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script2d.js"></script>
+</body>
+</html>

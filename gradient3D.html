@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkymcDB • Alpha</title>
+  <link rel="stylesheet" href="style3d.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.0.4/pako.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+  <header class="container mx-auto px-4 py-6">
+    <nav class="flex justify-between items-center">
+      <a href="#" class="text-2xl font-bold">SkymcDB • Alpha</a>
+      <div class="flex gap-4">
+        <div class="dropdown">
+          <a href="#" class="dropdown-toggle">Gradients</a>
+          <div class="dropdown-menu">
+            <a href="#">Gradient 1D</a>
+            <a href="#">Gradient 2D</a>
+            <a href="#">Gradient 3D</a>
+          </div>
+        </div>
+        <a href="#">Noises</a>
+        <a href="#">Palette</a>
+        <a href="#">Pixel Art</a>
+        <a href="#">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container mx-auto px-4">
+    <h1 class="text-3xl font-bold mb-4">3D Minecraft blocks gradient</h1>
+    <p class="mb-6">
+      Choose a base block and optional glass block for each corner, then adjust the size. The gradient interpolates combined base and glass colors, selecting the best base-glass pair or base block alone.
+    </p>
+
+    <div class="layout-container">
+      <div class="sources">
+        <div class="source-card">
+          <h2>Top-Left</h2>
+          <div class="source-item" onclick="openModal('baseTL')">
+            <img id="baseTL-img" class="hidden" />
+            <div class="source-text">
+              <p id="baseTL-label">Minecraft block or color</p>
+            </div>
+          </div>
+          <div class="source-item" onclick="openModal('glassTL')">
+            <img id="glassTL-img" class="hidden" />
+            <div class="source-text">
+              <p id="glassTL-label">Glass block, color, or none</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="source-card">
+          <h2>Top-Right</h2>
+          <div class="source-item" onclick="openModal('baseTR')">
+            <img id="baseTR-img" class="hidden" />
+            <div class="source-text">
+              <p id="baseTR-label">Minecraft block or color</p>
+            </div>
+          </div>
+          <div class="source-item" onclick="openModal('glassTR')">
+            <img id="glassTR-img" class="hidden" />
+            <div class="source-text">
+              <p id="glassTR-label">Glass block, color, or none</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="source-card">
+          <h2>Bottom-Left</h2>
+          <div class="source-item" onclick="openModal('baseBL')">
+            <img id="baseBL-img" class="hidden" />
+            <div class="source-text">
+              <p id="baseBL-label">Minecraft block or color</p>
+            </div>
+          </div>
+          <div class="source-item" onclick="openModal('glassBL')">
+            <img id="glassBL-img" class="hidden" />
+            <div class="source-text">
+              <p id="glassBL-label">Glass block, color, or none</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="source-card">
+          <h2>Bottom-Right</h2>
+          <div class="source-item" onclick="openModal('baseBR')">
+            <img id="baseBR-img" class="hidden" />
+            <div class="source-text">
+              <p id="baseBR-label">Minecraft block or color</p>
+            </div>
+          </div>
+          <div class="source-item" onclick="openModal('glassBR')">
+            <img id="glassBR-img" class="hidden" />
+            <div class="source-text">
+              <p id="glassBR-label">Glass block, color, or none</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gradient-container">
+        <div id="gradient" class="gradient"></div>
+        <div class="flex flex-col gap-4 mt-4">
+          <div>
+            <label for="size" class="block mb-1">Size (n x n)</label>
+            <input id="size" type="number" min="1" max="32" value="16" class="w-full px-3 py-2 bg-gray-800 rounded" />
+          </div>
+          <div>
+            <label for="fill-mode" class="block mb-1">Filling</label>
+            <select id="fill-mode" class="w-full px-3 py-2 bg-gray-800 rounded">
+              <option value="exact">Accurate colours</option>
+              <option value="blocks">Close blocks</option>
+            </select>
+          </div>
+          <div>
+            <label for="view-mode" class="block mb-1">View of textures</label>
+            <select id="view-mode" class="w-full px-3 py-2 bg-gray-800 rounded">
+              <option value="both">Both</option>
+              <option value="top">Top</option>
+              <option value="side">Side</option>
+            </select>
+          </div>
+          <div class="flex gap-4">
+            <button id="copy" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Copy the list</button>
+            <button id="surprise" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Surprise</button>
+            <button id="export-schematic" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Export to .schematic</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+    <div class="bg-gray-800 p-6 rounded-lg max-w-lg w-full">
+      <h2 class="text-xl mb-4">Choose a block or color</h2>
+      <div class="flex gap-2 mb-4">
+        <button id="tab-blocks" class="px-4 py-2 bg-blue-600 text-white rounded">Minecraft Blocks</button>
+        <button id="tab-glass" class="px-4 py-2 bg-gray-300 text-black rounded">Glass Blocks</button>
+        <button id="tab-color" class="px-4 py-2 bg-gray-300 text-black rounded">Free Color</button>
+        <button id="close-modal" class="px-4 py-2 bg-gray-600 text-white rounded">Close</button>
+      </div>
+      <div id="blocks-content" class="grid grid-cols-4 gap-2"></div>
+      <div id="glass-content" class="grid grid-cols-4 gap-2 hidden"></div>
+      <div id="color-content" class="hidden">
+        <input id="color-picker" type="color" class="w-full h-10 mb-2" />
+        <button id="use-color" class="px-4 py-2 bg-blue-600 text-white rounded">Use this color</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="container mx-auto px-4 py-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div>
+        <h3 class="text-lg font-bold mb-2">SkymcDB</h3>
+        <p>Create stunning Minecraft block gradients with ease.</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold mb-2">Explore</h3>
+        <ul>
+          <li><a href="#" class="hover:text-green-400">1D Gradient</a></li>
+          <li><a href="#" class="hover:text-green-400">2D Gradient</a></li>
+          <li><a href="#" class="hover:text-green-400">3D Gradient</a></li>
+          <li><a href="#" class="hover:text-green-400">Noises</a></li>
+          <li><a href="#" class="hover:text-green-400">Palette</a></li>
+          <li><a href="#" class="hover:text-green-400">Pixel Art</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold mb-2">Connect</h3>
+        <ul>
+          <li><a href="#" class="hover:text-green-400">Instagram</a></li>
+          <li><a href="#" class="hover:text-green-400">Discord</a></li>
+          <li><a href="#" class="hover:text-green-400">X</a></li>
+          <li><a href="#" class="hover:text-green-400">GitHub</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold mb-2">Legal</h3>
+        <ul>
+          <li><a href="#" class="hover:text-green-400">Privacy Policy</a></li>
+          <li><a href="#" class="hover:text-green-400">Terms of Use</a></li>
+        </ul>
+      </div>
+    </div>
+    <p class="text-center mt-6">© 2025 SkymcDB. All rights reserved.</p>
+  </footer>
+
+  <script src="script3d.js"></script>
+</body>
+</html>

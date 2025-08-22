@@ -1,16 +1,18 @@
 let blocks = [];
-let sourceA = null;
-let sourceB = null;
+let sourceTL = null;
+let sourceTR = null;
+let sourceBL = null;
+let sourceBR = null;
 let currentSource = null;
 
-// Charger les blocs depuis le fichier JSON
+// Load blocks from JSON file
 async function loadBlocks() {
   try {
     const response = await fetch('blocks.json');
     blocks = await response.json();
-    showBlocks(); // Initialiser l'affichage des blocs après le chargement
+    showBlocks();
   } catch (error) {
-    console.error('Erreur lors du chargement des blocs:', error);
+    console.error('Error loading blocks:', error);
   }
 }
 
@@ -49,28 +51,33 @@ function showColorPicker() {
 }
 
 function selectBlock(block) {
-  const sourceId = currentSource === 'sourceA' ? 'sourceA' : 'sourceB';
+  const sourceId = currentSource;
   const img = document.getElementById(`${sourceId}-img`);
   const label = document.getElementById(`${sourceId}-label`);
   img.src = block.path;
   img.classList.remove('hidden');
   label.textContent = block.name;
-  if (currentSource === 'sourceA') sourceA = block;
-  else sourceB = block;
+  if (currentSource === 'sourceTL') sourceTL = block;
+  else if (currentSource === 'sourceTR') sourceTR = block;
+  else if (currentSource === 'sourceBL') sourceBL = block;
+  else sourceBR = block;
   document.getElementById('modal').classList.add('hidden');
   updateGradient();
 }
 
 function selectColor() {
   const color = document.getElementById('color-picker').value;
-  const sourceId = currentSource === 'sourceA' ? 'sourceA' : 'sourceB';
+  const sourceId = currentSource;
   const img = document.getElementById(`${sourceId}-img`);
   const label = document.getElementById(`${sourceId}-label`);
   img.src = '';
   img.classList.add('hidden');
-  label.textContent = `Couleur: ${color}`;
-  if (currentSource === 'sourceA') sourceA = { name: color, color: hexToRgb(color), path: null, view: 'both' };
-  else sourceB = { name: color, color: hexToRgb(color), path: null, view: 'both' };
+  label.textContent = `Color: ${color}`;
+  const colorObj = { name: color, color: hexToRgb(color), path: null, view: 'both' };
+  if (currentSource === 'sourceTL') sourceTL = colorObj;
+  else if (currentSource === 'sourceTR') sourceTR = colorObj;
+  else if (currentSource === 'sourceBL') sourceBL = colorObj;
+  else sourceBR = colorObj;
   document.getElementById('modal').classList.add('hidden');
   updateGradient();
 }
@@ -83,37 +90,59 @@ function hexToRgb(hex) {
 }
 
 function updateGradient() {
-  if (!sourceA || !sourceB) return;
-  const length = parseInt(document.getElementById('length').value) || 16;
+  if (!sourceTL || !sourceTR || !sourceBL || !sourceBR) return;
+  const size = parseInt(document.getElementById('size').value) || 16;
   const fillMode = document.getElementById('fill-mode').value;
   const viewMode = document.getElementById('view-mode').value;
   const gradient = document.getElementById('gradient');
   gradient.innerHTML = '';
 
-  if (fillMode === 'exact') {
-    // Linear interpolation for exact colors
-    for (let i = 0; i < length; i++) {
-      const t = i / (length - 1);
-      const r = Math.round(sourceA.color.r + (sourceB.color.r - sourceA.color.r) * t);
-      const g = Math.round(sourceA.color.g + (sourceB.color.g - sourceA.color.g) * t);
-      const b = Math.round(sourceA.color.b + (sourceB.color.b - sourceA.color.b) * t);
+  // Set grid layout with dynamic block size
+  const gridSize = 512; // Fixed grid size in pixels
+  const blockSize = gridSize / size; // Dynamic block size
+  gradient.style.display = 'grid';
+  gradient.style.gridTemplateColumns = `repeat(${size}, ${blockSize}px)`;
+  gradient.style.gridTemplateRows = `repeat(${size}, ${blockSize}px)`;
+  gradient.style.width = `${gridSize}px`;
+  gradient.style.height = `${gridSize}px`;
+
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      const u = j / (size - 1); // Horizontal interpolation factor
+      const v = i / (size - 1); // Vertical interpolation factor
+
+      // Bilinear interpolation for color
+      const r = Math.round(
+        (1 - u) * (1 - v) * sourceTL.color.r +
+        u * (1 - v) * sourceTR.color.r +
+        (1 - u) * v * sourceBL.color.r +
+        u * v * sourceBR.color.r
+      );
+      const g = Math.round(
+        (1 - u) * (1 - v) * sourceTL.color.g +
+        u * (1 - v) * sourceTR.color.g +
+        (1 - u) * v * sourceBL.color.g +
+        u * v * sourceBR.color.g
+      );
+      const b = Math.round(
+        (1 - u) * (1 - v) * sourceTL.color.b +
+        u * (1 - v) * sourceTR.color.b +
+        (1 - u) * v * sourceBL.color.b +
+        u * v * sourceBR.color.b
+      );
+
       const div = document.createElement('div');
       div.className = 'gradient-square';
-      div.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-      div.innerHTML = `<span class="tooltip">Couleur: rgb(${r}, ${g}, ${b})</span>`;
-      gradient.appendChild(div);
-    }
-  } else {
-    // Linear interpolation with nearest block, filtered by view
-    for (let i = 0; i < length; i++) {
-      const t = i / (length - 1);
-      const r = Math.round(sourceA.color.r + (sourceB.color.r - sourceA.color.r) * t);
-      const g = Math.round(sourceA.color.g + (sourceB.color.g - sourceA.color.g) * t);
-      const b = Math.round(sourceA.color.b + (sourceB.color.b - sourceA.color.b) * t);
-      const nearestBlock = findNearestBlock({ r, g, b }, viewMode);
-      const div = document.createElement('div');
-      div.className = 'gradient-square';
-      div.innerHTML = `<img src="${nearestBlock.path}" alt="${nearestBlock.name}" /><span class="tooltip">${nearestBlock.name}</span>`;
+      div.style.width = `${blockSize}px`;
+      div.style.height = `${blockSize}px`;
+
+      if (fillMode === 'exact') {
+        div.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        div.innerHTML = `<span class="tooltip">Color: rgb(${r}, ${g}, ${b})</span>`;
+      } else {
+        const nearestBlock = findNearestBlock({ r, g, b }, viewMode);
+        div.innerHTML = `<img src="${nearestBlock.path}" alt="${nearestBlock.name}" /><span class="tooltip">${nearestBlock.name}</span>`;
+      }
       gradient.appendChild(div);
     }
   }
@@ -123,7 +152,7 @@ function findNearestBlock(color, viewMode) {
   let minDistance = Infinity;
   let nearestBlock = blocks[0];
   const filteredBlocks = blocks.filter(block => viewMode === 'both' || block.view === viewMode || block.view === 'both');
-  if (filteredBlocks.length === 0) return blocks[0]; // Fallback if no blocks match the view
+  if (filteredBlocks.length === 0) return blocks[0];
   filteredBlocks.forEach(block => {
     const distance =
       Math.pow(block.color.r - color.r, 2) +
@@ -143,31 +172,46 @@ document.getElementById('close-modal').onclick = () => {
   document.getElementById('modal').classList.add('hidden');
 };
 document.getElementById('use-color').onclick = selectColor;
-document.getElementById('length').oninput = updateGradient;
+document.getElementById('size').oninput = updateGradient;
 document.getElementById('fill-mode').onchange = updateGradient;
 document.getElementById('view-mode').onchange = updateGradient;
 document.getElementById('copy').onclick = () => {
   const gradient = document.getElementById('gradient');
   const names = Array.from(gradient.querySelectorAll('.tooltip')).map(span => span.textContent);
   navigator.clipboard.writeText(names.join(','));
-  alert('Liste copiée !');
+  alert('List copied!');
 };
 document.getElementById('surprise').onclick = () => {
   const viewMode = document.getElementById('view-mode').value;
   const filteredBlocks = blocks.filter(block => viewMode === 'both' || block.view === viewMode || block.view === 'both');
-  if (filteredBlocks.length === 0) return; // Prevent action if no blocks match
-  const randomA = filteredBlocks[Math.floor(Math.random() * filteredBlocks.length)];
-  const randomB = filteredBlocks[Math.floor(Math.random() * filteredBlocks.length)];
-  sourceA = randomA;
-  document.getElementById('sourceA-img').src = randomA.path;
-  document.getElementById('sourceA-img').classList.remove('hidden');
-  document.getElementById('sourceA-label').textContent = randomA.name;
-  sourceB = randomB;
-  document.getElementById('sourceB-img').src = randomB.path;
-  document.getElementById('sourceB-img').classList.remove('hidden');
-  document.getElementById('sourceB-label').textContent = randomB.name;
+  if (filteredBlocks.length === 0) return;
+  const randomTL = filteredBlocks[Math.floor(Math.random() * filteredBlocks.length)];
+  const randomTR = filteredBlocks[Math.floor(Math.random() * filteredBlocks.length)];
+  const randomBL = filteredBlocks[Math.floor(Math.random() * filteredBlocks.length)];
+  const randomBR = filteredBlocks[Math.floor(Math.random() * filteredBlocks.length)];
+
+  sourceTL = randomTL;
+  document.getElementById('sourceTL-img').src = randomTL.path;
+  document.getElementById('sourceTL-img').classList.remove('hidden');
+  document.getElementById('sourceTL-label').textContent = randomTL.name;
+
+  sourceTR = randomTR;
+  document.getElementById('sourceTR-img').src = randomTR.path;
+  document.getElementById('sourceTR-img').classList.remove('hidden');
+  document.getElementById('sourceTR-label').textContent = randomTR.name;
+
+  sourceBL = randomBL;
+  document.getElementById('sourceBL-img').src = randomBL.path;
+  document.getElementById('sourceBL-img').classList.remove('hidden');
+  document.getElementById('sourceBL-label').textContent = randomBL.name;
+
+  sourceBR = randomBR;
+  document.getElementById('sourceBR-img').src = randomBR.path;
+  document.getElementById('sourceBR-img').classList.remove('hidden');
+  document.getElementById('sourceBR-label').textContent = randomBR.name;
+
   updateGradient();
 };
 
-// Initialiser le chargement des blocs
+// Initialize block loading
 loadBlocks();
