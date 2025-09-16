@@ -1,141 +1,86 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SkymcDB • Alpha</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockr.</title>
+    <link rel="icon" href="img/icon.ico">   
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.0.4/dist/pako.min.js"></script>
 </head>
 <body>
-    <canvas id="background-canvas"></canvas>
-  <nav>
     <div class="container">
-      <a href="#" class="logo">SkymcDB • Alpha</a>
-      <div class="nav-links">
-        <div class="dropdown">
-          <a href="#" class="dropdown-toggle">Gradients</a>
-          <div class="dropdown-menu">
-            <a href="index.html">Gradient 1D</a>
-            <a href="gradient2D.html">Gradient 2D</a>
-            <a href="gradient3D.html">Gradient 3D</a>
-          </div>
+        <div id="interface">
+            <div class="tooltip">
+                <input type="file" id="modelInput" accept=".gltf,.glb,.obj,.stl" />
+                <span class="tooltip-text">
+                    Formats pris en charge : .gltf, .glb, .obj, .stl
+                    <br>
+                    Fichiers 3D standards pour les modèles. Les fichiers .gltf et .glb incluent souvent des matériaux, tandis que .obj et .stl sont plus simples.
+                </span>
+            </div>
+
+            <div class="btn-group">
+                <button id="toggleMode" class="btn btn-primary">Convertir en Blocs</button>
+                <button id="resetScene" class="btn">Réinitialiser</button>
+            </div>
+
+            <div class="btn-row">
+                <button id="rotateX" class="btn btn-icon">↻ X</button>
+                <button id="rotateY" class="btn btn-icon">↻ Y</button>
+                <button id="rotateZ" class="btn btn-icon">↻ Z</button>
+                <button id="scaleUp" class="btn btn-icon">+</button>
+                <button id="scaleDown" class="btn btn-icon">-</button>
+                <button id="resetPosition" class="btn btn-icon">↺</button>
+            </div>
+
+            <div id="voxelSlider" class="hidden">
+                <div class="control-group">
+                    <label for="voxelRes" class="control-label">Résolution Blocs (10-512):</label>
+                    <input type="range" id="voxelRes" min="10" max="512" value="20">
+                    <span id="voxelResValue">20</span>
+                </div>
+
+                <div class="control-group">
+                    <label for="voxelColor" class="control-label">Couleur des Blocs:</label>
+                    <input type="color" id="voxelColor" value="#aaaaaa">
+                </div>
+
+                <button id="exportSchem" class="btn btn-primary" disabled>Exporter en .schem</button>
+            </div>
         </div>
-        <a href="#">Noises</a>
-        <a href="#">Palette</a>
-        <a href="#">Pixel Art</a>
-        <a href="#">GitHub</a>
-      </div>
-    </div>
-  </nav>
 
-  <main class="container">
-    <h1>1D Minecraft blocks gradient</h1>
-    <p class="description">
-      Choose two sources (block or color), then adjust the length. The gradient is filled with the nearest blocks in medium color.
-    </p>
-
-    <div class="sources">
-      <div id="sourceA" class="source-card" onclick="openModal('sourceA')">
-        <h2>Source A</h2>
-        <p id="sourceA-label">Minecraft block or color</p>
-        <img id="sourceA-img" src="" class="hidden" />
-      </div>
-      <div id="sourceB" class="source-card" onclick="openModal('sourceB')">
-        <h2>Source B</h2>
-        <p id="sourceB-label">Minecraft block or color</p>
-        <img id="sourceB-img" src="" class="hidden" />
-      </div>
-    </div>
-
-    <div class="gradient-container">
-      <div id="gradient" class="gradient"></div>
-    </div>
-
-    <div class="controls">
-      <div>
-        <label for="length">Length</label>
-        <input id="length" type="number" value="16" min="1" />
-      </div>
-      <div>
-        <label for="fill-mode">filling</label>
-        <select id="fill-mode">
-          <option value="nearest">Close blocks</option>
-          <option value="exact">Accurate colours</option>
-        </select>
-      </div>
-      <div>
-        <label for="view-mode">View of textures</label>
-        <select id="view-mode">
-          <option value="both">Both</option>
-          <option value="top">Top</option>
-          <option value="side">Side</option>
-        </select>
-      </div>
-      <div class="button-group">
-        <button id="copy">Copy the list</button>
-        <button id="surprise">Surprise</button>
-      </div>
-    </div>
-  </main>
-
-  <div id="modal" class="modal hidden">
-    <div class="modal-content">
-      <h2>Choisir un bloc ou une couleur</h2>
-      <div class="modal-tabs">
-        <button id="tab-blocks" class="tab-button active">Blocs Minecraft</button>
-        <button id="tab-color" class="tab-button">Couleur libre</button>
-        <button id="close-modal" class="tab-button close">Fermer</button>
-      </div>
-
-      <div id="blocks-content" class="blocks-grid"></div>
-      <div id="color-content" class="hidden">
-        <input type="color" id="color-picker" />
-        <button id="use-color" class="modal-button">Utiliser cette couleur</button>
-      </div>
-    </div>
-  </div>
-
-  <footer>
-    <div class="container">
-      <div class="footer-content">
-        <div class="footer-section">
-          <h3>SkymcDB</h3>
-          <p>Create stunning Minecraft block gradients with ease.</p>
+        <div id="progress" class="status-message hidden">
+            <span>Voxelisation en cours...</span>
+            <span id="progressPercent">0%</span>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
         </div>
-        <div class="footer-section">
-          <h3>Explore</h3>
-          <ul>
-            <li><a href="#">1D Gradient</a></li>
-            <li><a href="#">2D Gradient</a></li>
-            <li><a href="#">Noises</a></li>
-            <li><a href="#">Palette</a></li>
-            <li><a href="#">Pixel Art</a></li>
-          </ul>
-        </div>
-        <div class="footer-section">
-          <h3>Connect</h3>
-          <ul>
-            <li><a href="https://instagram.com" target="_blank">Instagram</a></li>
-            <li><a href="https://discord.com" target="_blank">Discord</a></li>
-            <li><a href="https://x.com" target="_blank">X</a></li>
-            <li><a href="https://github.com" target="_blank">GitHub</a></li>
-          </ul>
-        </div>
-        <div class="footer-section">
-          <h3>Legal</h3>
-          <ul>
-            <li><a href="#">Privacy Policy</a></li>
-            <li><a href="#">Terms of Use</a></li>
-          </ul>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <p>&copy; 2025 SkymcDB. All rights reserved.</p>
-      </div>
-    </div>
-  </footer>
 
-  <script src="script.js"></script>
+        <div id="error" class="status-message hidden"></div>
+
+        <div id="modelStatus" class="status-message">
+            <img src="img/logo.png" alt="Logo" style="width: 48px; height: 24px; margin-right: 8px;">
+            <span>En attente de modèle</span>
+        </div>
+    </div>
+
+    <div class="circle-container">
+        <div class="circle"></div>
+    </div>
+    <div class="circle-container">
+        <div class="circle"></div>
+    </div>
+    <div class="circle-container">
+        <div class="circle"></div>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
